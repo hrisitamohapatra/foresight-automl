@@ -1,0 +1,5 @@
+dataset,rows,columns,problem_type,imbalanced,metric,baseline_score,simple_model_score,simple_model_std,best_model,best_score,best_std,test_score,columns_used,leaky_columns_flagged,columns_warned,top_drivers,train_seconds,total_seconds,error
+telco_churn,7043,31,binary,False,roc_auc,0.5,0.8579004124819619,0.013137365348546865,Logistic regression,0.8579004124819619,0.013137365348546865,0.8466609832338733,25,Churn Value; Churn Reason,,Tenure Months; Dependents; Contract,7.3,10.6,
+german_credit,1000,20,binary,False,roc_auc,0.5,0.770796130952381,0.05309125182725792,Random forest,0.7907180059523808,0.03875371327403175,0.7822023809523809,20,,,checking_account; duration_months; savings,3.3,11.0,
+bank_marketing,45211,15,binary,True,pr_auc,0.11698186142744749,0.39847807873620233,0.007626298247088939,LightGBM,0.442867044738202,0.010515164835346869,0.46435434953925253,15,,,contact; month; day,12.4,15.2,
+bike_demand,17379,14,regression,False,rmse,182.1790653655705,142.56314249341045,4.102219624022047,LightGBM,41.15422388232162,1.6263746508550074,39.04047599191267,12,,,hr; yr; temp,4.6,5.9,

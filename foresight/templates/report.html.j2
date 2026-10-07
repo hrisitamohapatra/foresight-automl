@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Foresight AutoML report</title>
+<style>
+  :root {
+    --primary: {{ palette.primary }};
+    --bg: {{ palette.background }};
+    --bg2: {{ palette.secondary }};
+    --text: {{ palette.text }};
+    --warn: {{ palette.warning }};
+    --dark: {{ palette.dark_blue }};
+  }
+  body { margin: 0; background: var(--bg); color: var(--text);
+         font-family: "Segoe UI", system-ui, -apple-system, sans-serif; line-height: 1.55; }
+  main { max-width: 920px; margin: 0 auto; padding: 32px 16px 64px; }
+  header { border-bottom: 3px solid var(--primary); padding-bottom: 12px; margin-bottom: 24px; }
+  h1 { margin: 0; color: var(--dark); font-size: 1.8rem; }
+  h2 { color: var(--dark); margin-top: 36px; font-size: 1.3rem;
+       border-bottom: 1px solid var(--bg2); padding-bottom: 4px; }
+  .meta { color: var(--text); opacity: 0.75; font-size: 0.9rem; }
+  .question { background: var(--bg2); border-left: 4px solid var(--primary);
+              padding: 12px 16px; font-size: 1.1rem; }
+  .headline { font-size: 1.15rem; font-weight: 600; }
+  .table-wrap { overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; margin: 12px 0; font-size: 0.92rem; }
+  th { background: var(--bg2); text-align: left; }
+  th, td { padding: 8px 10px; border-bottom: 1px solid var(--bg2); vertical-align: top; }
+  tr.best td { font-weight: 600; background: #EAF1FC; }
+  .tag { background: var(--primary); color: #fff; border-radius: 4px;
+         padding: 1px 6px; font-size: 0.75rem; margin-left: 6px; }
+  .warn { border-left: 4px solid var(--warn); background: #FDF6E7;
+          padding: 8px 12px; margin: 8px 0; }
+  .note { background: var(--bg2); padding: 8px 12px; margin: 8px 0; }
+  img { max-width: 100%; height: auto; }
+  ul { padding-left: 20px; }
+  .small { font-size: 0.85rem; opacity: 0.8; }
+</style>
+</head>
+<body>
+<main>
+
+<header>
+  <h1>Foresight AutoML report</h1>
+  <div class="meta">{{ dataset_name }} · created {{ created }}</div>
+</header>
+
+<section>
+  <h2>The question</h2>
+  <p class="question">{{ question }}</p>
+  <p>Predicting <strong>{{ target }}</strong>: {{ problem_label }}.
+  {% if positive_class is not none %}
+    The model estimates the likelihood of <strong>'{{ positive_class }}'</strong>.
+  {% endif %}
+  </p>
+</section>
+
+<section>
+  <h2>How well the model does</h2>
+  <p class="headline">{{ headline }}</p>
+  <div class="table-wrap">
+  <table>
+    <tr><th>Metric</th><th>Test result</th><th>What it means</th></tr>
+    {% for row in test_rows %}
+    <tr>
+      <td>{{ row.name }}{% if row.is_selection %}<span class="tag">used to pick the model</span>{% endif %}</td>
+      <td>{{ row.value }}</td>
+      <td>{{ row.description }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+  </div>
+  <p class="small">The test set was set aside before anything else and used exactly once,
+  for this final check.</p>
+</section>
+
+<section>
+  <h2>Model comparison</h2>
+  <p>Each model was scored with {{ cv_folds }}-fold cross-validation on the training data
+  (mean ± standard deviation across folds). The best by <strong>{{ selection_metric }}</strong>
+  was <strong>{{ best_name }}</strong>.</p>
+  <img alt="Model comparison chart" src="data:image/png;base64,{{ model_chart }}">
+  <div class="table-wrap">
+  <table>
+    <tr><th>Model</th><th>Role</th>
+      {% for name in metric_names %}<th>{{ name }}</th>{% endfor %}
+      <th>Seconds per fold</th></tr>
+    {% for row in model_rows %}
+    <tr{% if row.is_best %} class="best"{% endif %}>
+      <td>{{ row.name }}{% if row.is_best %}<span class="tag">best</span>{% endif %}</td>
+      <td>{{ row.role }}</td>
+      {% if row.error %}
+        <td colspan="{{ metric_names|length }}">{{ row.error }}</td>
+      {% else %}
+        {% for score in row.scores %}<td>{{ score }}</td>{% endfor %}
+      {% endif %}
+      <td>{{ row.fit_seconds }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+  </div>
+</section>
+
+<section>
+  <h2>What the model relies on</h2>
+  <p>These are the columns the model leans on most when making predictions.
+  <strong>They show what the model relies on, not what causes the outcome.</strong></p>
+  <img alt="Column importance chart" src="data:image/png;base64,{{ importance_chart }}">
+  <div class="table-wrap">
+  <table>
+    <tr><th>Column</th><th>Share of reliance (SHAP)</th>
+        <th>Score drop when shuffled</th><th>Pattern</th></tr>
+    {% for row in driver_rows %}
+    <tr>
+      <td>{{ row.column }}</td><td>{{ row.share }}</td>
+      <td>{{ row.perm }}</td><td>{{ row.direction }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+  </div>
+  {% if n_used_columns > driver_rows|length %}
+  <p class="small">Showing the top {{ driver_rows|length }} of {{ n_used_columns }} columns used.</p>
+  {% endif %}
+  <p class="note">{{ agreement }}</p>
+  {% for note in explain_notes %}<p class="warn">{{ note }}</p>{% endfor %}
+</section>
+
+<section>
+  <h2>Data checks</h2>
+  <p>{{ n_rows }} rows and {{ n_columns }} input columns:
+  {{ n_train }} rows for training and {{ test_share }} ({{ n_test }} rows) held out for testing.</p>
+  {% if class_rows %}
+  <div class="table-wrap">
+  <table>
+    <tr><th>Class</th><th>Share of training rows</th></tr>
+    {% for row in class_rows %}<tr><td>{{ row.label }}</td><td>{{ row.share }}</td></tr>{% endfor %}
+  </table>
+  </div>
+  {% endif %}
+  {% for warning in data_warnings %}<p class="warn">{{ warning }}</p>{% endfor %}
+  {% if excluded_rows %}
+  <h3>Columns not used</h3>
+  <div class="table-wrap">
+  <table>
+    <tr><th>Column</th><th>Why</th></tr>
+    {% for row in excluded_rows %}<tr><td>{{ row.column }}</td><td>{{ row.reason }}</td></tr>{% endfor %}
+  </table>
+  </div>
+  {% endif %}
+</section>
+
+<section>
+  <h2>Caveats</h2>
+  <ul>
+    {% for item in caveats %}<li>{{ item }}</li>{% endfor %}
+  </ul>
+</section>
+
+<section>
+  <h2>Method</h2>
+  <ul class="small">
+    <li>{{ test_share }} of rows held out (stratified for classification), random seed {{ seed }}.</li>
+    <li>All preprocessing (filling missing values, scaling, encoding) was learned inside
+        each cross-validation training fold only.</li>
+    <li>{{ cv_folds }}-fold cross-validation for model comparison; the test set was used once.</li>
+    <li>SHAP values on {{ shap_rows }} test rows; permutation importance on {{ perm_rows }} test rows,
+        {{ perm_repeats }} repeats, measured as the drop in {{ perm_metric }}.</li>
+    <li>Total run time {{ runtime }} seconds. {{ versions }}.</li>
+  </ul>
+</section>
+
+</main>
+</body>
+</html>

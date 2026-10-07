@@ -1,0 +1,43 @@
+[
+  {
+    "name": "telco_churn",
+    "file": "Telco_customer_churn.csv",
+    "target": "Churn Label",
+    "positive_class": "Yes",
+    "drop_columns": ["Churn Score"],
+    "notes": "Messy, binary. IBM extended version. Churn Value and Churn Reason are left in and are excluded automatically by the leakage check. Churn Score (IBM's own model prediction, single-column ROC-AUC 0.942) was warned about but not excluded, so it is dropped here: another model's output is not a customer attribute."
+  },
+  {
+    "name": "german_credit",
+    "file": "german/german.data",
+    "sep": "whitespace",
+    "header": false,
+    "columns": [
+      "checking_account", "duration_months", "credit_history", "purpose", "credit_amount",
+      "savings", "employment_since", "installment_rate", "personal_status_sex", "other_debtors",
+      "residence_since", "property", "age", "other_installment_plans", "housing",
+      "existing_credits", "job", "people_liable", "telephone", "foreign_worker", "credit_risk"
+    ],
+    "target": "credit_risk",
+    "target_labels": {"1": "good", "2": "bad"},
+    "positive_class": "bad",
+    "notes": "Credit risk, binary. Space-separated file without a header; column names from german.doc."
+  },
+  {
+    "name": "bank_marketing",
+    "file": "bank/bank-full.csv",
+    "sep": ";",
+    "target": "y",
+    "positive_class": "yes",
+    "drop_columns": ["duration"],
+    "notes": "Marketing, imbalanced binary. 'duration' (call length) is dropped: it is only known after the call, and the UCI documentation says to discard it for a realistic model."
+  },
+  {
+    "name": "bike_demand",
+    "file": "bike/hour.csv",
+    "target": "cnt",
+    "problem_type": "regression",
+    "drop_columns": ["casual", "registered"],
+    "notes": "Demand, regression. 'casual' + 'registered' = 'cnt' by definition, so both are dropped (a leak spread across two columns)."
+  }
+]

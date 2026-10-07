@@ -1,0 +1,24 @@
+[theme]
+base = "light"
+primaryColor = "#1E64D4"
+backgroundColor = "#FFFFFF"
+secondaryBackgroundColor = "#F3F7FD"
+textColor = "#1B2A41"
+# st.warning uses the yellow palette: use the muted amber reserved for warnings.
+yellowColor = "#E8A317"
+
+[server]
+# Matches MAX_FILE_SIZE_MB in foresight/config.py
+maxUploadSize = 50
+# Only reachable from this computer. Change deliberately if teammates need access.
+address = "localhost"
+
+[client]
+# Never show stack traces, file paths, or exception details in the browser.
+showErrorDetails = "none"
+# Hide the "Deploy" button and developer menu items (internal tool).
+toolbarMode = "minimal"
+
+[browser]
+# Do not send usage statistics to Streamlit.
+gatherUsageStats = false
