@@ -25,6 +25,7 @@ venv\Scripts\python.exe -m pip install -r requirements.txt
 ```powershell
 venv\Scripts\python.exe -m streamlit run app.py
 ```
+Local development: The app runs locally by default, and uploaded files are processed in memory rather than persisted by the application.
 
 Then open http://localhost:8501. The app is only reachable from your own computer,
 and uploaded files stay in memory (they are never written to disk).
