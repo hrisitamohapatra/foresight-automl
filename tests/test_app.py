@@ -45,6 +45,18 @@ def test_chart_label_escapes_html_and_truncates():
 ALLOWED_HTML_CONSTANTS = {"PAGE_STYLE", "HEADER_HTML"}
 
 
+def test_chart_hover_text_is_readable():
+    from types import SimpleNamespace
+
+    result = SimpleNamespace(
+        problem_type="binary", selection_metric="pr_auc", best_key="linear",
+        model_results=[SimpleNamespace(key="dummy", name="Baseline", role="baseline", error="",
+                                       cv_mean={"pr_auc": 0.1615651}, cv_std={"pr_auc": 2.7e-4})])
+    bar = app.model_figure(result).data[0]
+    assert bar.hovertemplate == "%{y}: %{x:.3f} ± %{customdata:.3f}<extra></extra>"
+    assert list(bar.customdata) == [2.7e-4]
+
+
 def test_raw_html_only_from_fixed_constants():
     """st.html may only receive PAGE_STYLE or HEADER_HTML, and those must be
     plain string literals written in app.py (no f-strings, no data)."""

@@ -225,13 +225,16 @@ def model_figure(result: TrainResult):
     colors = [config.CHART_BLUES[0] if r.key == result.best_key else
               config.CHART_BLUES[4] if r.role == "baseline" else config.CHART_BLUES[2]
               for r in ok]
+    stds = [r.cv_std[metric.key] for r in ok]
     fig = go.Figure(go.Bar(
         x=[r.cv_mean[metric.key] for r in ok],
         y=[chart_label(r.name) for r in ok],
         orientation="h",
         marker_color=colors,
-        error_x=dict(type="data", array=[r.cv_std[metric.key] for r in ok],
-                     color=config.COLOR_TEXT),
+        error_x=dict(type="data", array=stds, color=config.COLOR_TEXT),
+        # Readable hover text: "LightGBM: 0.443 ± 0.011" (not "± 274μ").
+        customdata=stds,
+        hovertemplate="%{y}: %{x:.3f} ± %{customdata:.3f}<extra></extra>",
     ))
     direction = "higher is better" if metric.higher_is_better else "lower is better"
     return _style(fig, len(ok), f"{metric.name}, cross-validation mean ± std ({direction})")
@@ -271,13 +274,16 @@ def importance_figure(explanation: Explanation, top: int = 10):
     table = explanation.importance.head(top)
     if explanation.shap_available:
         values, title = table["shap_share"] * 100, "Share of the model's reliance (%), SHAP"
+        hover = "%{y}: %{x:.1f}%<extra></extra>"
     else:
         values, title = table["perm_mean"], "Score drop when shuffled (permutation)"
+        hover = "%{y}: %{x:.3f}<extra></extra>"
     fig = go.Figure(go.Bar(
         x=list(values),
         y=[chart_label(c) for c in table["column"]],
         orientation="h",
         marker_color=config.CHART_BLUES[1],
+        hovertemplate=hover,
     ))
     return _style(fig, len(table), title)
 
