@@ -38,9 +38,11 @@ business decision rather than model internals.
 
 ## Walkthrough: IBM HR employee attrition
 
-A real run on the public **IBM HR Analytics Employee Attrition** dataset (1,470 employees,
-35 columns), predicting `Attrition` ("Yes" = the employee left). All numbers below come from
-this run.
+A real run on the public
+[IBM HR Analytics Employee Attrition dataset](https://www.kaggle.com/datasets/pavansubhasht/ibm-hr-analytics-attrition-dataset)
+(Kaggle; 1,470 employees, 35 columns), predicting `Attrition` ("Yes" = the employee left).
+The whole run, from upload to downloadable report, took **under 2 minutes** on a laptop.
+All numbers below come from this run.
 
 ### 1. Upload and choose the target
 
