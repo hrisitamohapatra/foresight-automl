@@ -156,7 +156,7 @@ MLFLOW_EXPERIMENT = "foresight-automl"
 # [COLUMN_1]. Its answer is checked against the real results before use;
 # otherwise the template summary is shown instead.
 ENV_FILE = PROJECT_ROOT / ".env"          # holds GEMINI_API_KEY (never committed)
-GEMINI_MODEL = "gemini-2.5-flash"         # change if your key uses a different model
+GEMINI_MODEL = "gemini-3.8-flash"         # change if your key uses a different model
 GEMINI_TIMEOUT_SECONDS = 30
 NARRATIVE_MAX_CHARS = 1500
 NARRATIVE_TOP_DRIVERS = 5

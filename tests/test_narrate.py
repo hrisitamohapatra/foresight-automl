@@ -23,17 +23,18 @@ FAKE_KEY = "AIza-test-key-that-must-never-appear"
 class FakeClient:
     """Mimics client.models.generate_content and records every request."""
 
-    def __init__(self, reply=None, error=None):
+    def __init__(self, reply=None, error=None, finish_reason="STOP"):
         self.requests = []
-        self.reply, self.error = reply, error
+        self.reply, self.error, self.finish_reason = reply, error, finish_reason
         self.models = SimpleNamespace(generate_content=self._generate)
 
     def _generate(self, model, contents, config):
         self.requests.append({"model": model, "contents": contents,
-                              "system": config.system_instruction})
+                              "system": config.system_instruction, "config": config})
         if self.error:
             raise self.error
-        return SimpleNamespace(text=self.reply)
+        return SimpleNamespace(text=self.reply,
+                               candidates=[SimpleNamespace(finish_reason=self.finish_reason)])
 
 
 def churn_df(n=N):
@@ -198,6 +199,28 @@ def test_hallucinated_number_falls_back(run):
     narrative = summarize(*run, use_gemini=True, client=FakeClient(reply=reply))
     assert narrative.source == "template"
     assert "accuracy check" in narrative.note and "numbers" in narrative.note
+
+
+def test_cut_off_answer_rejected(run, facts_names):
+    # What the first live test returned: correct so far, but stopped mid-sentence.
+    facts, _ = facts_names
+    cut = (f"This {facts['task']} analysis evaluated models to predict [TARGET], focusing "
+           f"on the positive class [CLASS_1]. Using {facts['rows_used_for_training']} "
+           "training rows and")
+    by_reason = summarize(*run, use_gemini=True,
+                          client=FakeClient(reply=cut, finish_reason="MAX_TOKENS"))
+    assert by_reason.source == "template" and "cut off" in by_reason.note
+    # Even if the API claimed a normal finish, the unfinished sentence is caught.
+    by_text = summarize(*run, use_gemini=True, client=FakeClient(reply=cut))
+    assert by_text.source == "template" and "incomplete" in by_text.note
+
+
+def test_request_limits_thinking_and_allows_room(run):
+    client = FakeClient(reply="x")
+    summarize(*run, use_gemini=True, client=client)
+    sent = client.requests[0]["config"]
+    assert sent.max_output_tokens >= 2048
+    assert sent.thinking_config.thinking_level.value == "LOW"
 
 
 def test_api_error_falls_back_without_leaking_details(run):

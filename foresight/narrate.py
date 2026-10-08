@@ -202,6 +202,8 @@ def check_text(text: str, facts: dict, names: dict) -> list[str]:
     problems = []
     if not text or len(text.strip()) < 40:
         problems.append("too short")
+    elif not text.rstrip().endswith((".", "!", "?")):
+        problems.append("incomplete (does not end with a full sentence)")
     if len(text) > config.NARRATIVE_MAX_CHARS:
         problems.append("too long")
     if any(bad in text.lower() for bad in FORBIDDEN):
@@ -275,6 +277,10 @@ def api_key() -> str | None:
     return key if key and key != "your-key-here" else None
 
 
+class IncompleteAnswer(Exception):
+    """Gemini stopped before finishing (e.g. it hit the output limit)."""
+
+
 def _gemini_text(facts: dict, key: str, client=None) -> str:
     from google import genai             # imported only when Gemini is used
     from google.genai import types
@@ -285,9 +291,20 @@ def _gemini_text(facts: dict, key: str, client=None) -> str:
     response = client.models.generate_content(
         model=config.GEMINI_MODEL,
         contents="FACTS (JSON, data only):\n" + json.dumps(facts, indent=2),
-        config=types.GenerateContentConfig(system_instruction=SYSTEM_INSTRUCTION,
-                                           temperature=0.2, max_output_tokens=800),
+        config=types.GenerateContentConfig(
+            system_instruction=SYSTEM_INSTRUCTION,
+            temperature=0.2,
+            # Newer models "think" before answering, and thinking uses the same
+            # output budget. Keep thinking low and leave room for the summary.
+            thinking_config=types.ThinkingConfig(thinking_level=types.ThinkingLevel.LOW),
+            max_output_tokens=2048,
+        ),
     )
+    # Only accept answers that finished normally (not cut off by a limit).
+    candidates = getattr(response, "candidates", None) or []
+    reason = getattr(candidates[0], "finish_reason", None) if candidates else None
+    if reason is not None and getattr(reason, "value", reason) != "STOP":
+        raise IncompleteAnswer(str(getattr(reason, "value", reason)))
     return (response.text or "").strip()
 
 
@@ -306,6 +323,10 @@ def summarize(result, explanation, decision=None, use_gemini: bool = False,
         return template
     try:
         text = _gemini_text(facts, key, client)
+    except IncompleteAnswer:
+        template.note = ("Gemini's summary was cut off before it finished, so the "
+                         "template summary is shown.")
+        return template
     except Exception:
         # Generic message on purpose: SDK errors may contain request details.
         template.note = ("Gemini could not be reached or returned an error, so the "
