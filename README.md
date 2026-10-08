@@ -1,34 +1,126 @@
 # Foresight AutoML
 
-A dataset-agnostic system for explainable predictive modeling and decision support.
+**A dataset-agnostic system for explainable predictive modeling and decision support.**
 
-Upload any tabular CSV, pick a target column, and Foresight AutoML will:
+Upload any tabular CSV, choose what to predict, and get a validated predictive model, a
+plain-English explanation of what it relies on, and a decision-ready report, in minutes and
+without writing code.
 
-1. Validate and profile the data (quality issues, likely target leakage)
-2. Detect the problem type (binary, multiclass, regression)
-3. Train baselines and candidate models with 5-fold cross-validation
-4. Evaluate the best model once on a held-out test set
-5. Explain what the model relies on (SHAP + permutation importance)
-6. Produce a plain-English HTML report
+![Foresight AutoML home screen](docs/images/1_interface.png)
 
-> Status: Phase 1 in progress.
+## Why it exists
 
-## Setup (Windows PowerShell)
+Teams often need a reliable first model for a new dataset (churn, attrition, credit risk,
+demand) but lack the time to build one carefully. Foresight AutoML automates the careful
+parts that are easy to get wrong: a proper baseline, leakage-safe preprocessing, a held-out
+test set that is used only once, honest uncertainty, and explanations framed around the
+business decision rather than model internals.
 
-```powershell
-python -m venv venv
-venv\Scripts\python.exe -m pip install -r requirements.txt
-```
+## Features
 
-## Run the app
+- **Any CSV, any target:** detects yes/no, category or number prediction, and asks when it is ambiguous.
+- **Data checks:** column types, missing values, constant and ID-like columns, numbers stored as text, class imbalance, and **likely target leakage**.
+- **Fair model comparison:** a baseline, a simple linear model, random forest and LightGBM, compared with 5-fold cross-validation (mean ± standard deviation).
+- **One honest test:** the best model is scored once on a 20% held-out test set.
+- **Explanations:** SHAP and permutation importance, cross-checked against each other, with plain-English direction hints ("higher values go with more likely 'Yes'").
+- **From scores to decisions:** calibrated probabilities, a cost-based cut-off, and a lift chart showing who to act on first.
+- **Reports:** a self-contained HTML report that also prints cleanly to PDF.
+- **Optional extras:** Optuna tuning with nested cross-validation, local MLflow run tracking, and a Gemini-written summary whose numbers are checked against the real results.
 
-```powershell
-venv\Scripts\python.exe -m streamlit run app.py
-```
-Local development: The app runs locally by default, and uploaded files are processed in memory rather than persisted by the application.
+## How it works
 
-Then open http://localhost:8501. The app is only reachable from your own computer,
-and uploaded files stay in memory (they are never written to disk).
+1. **Ingest and validate:** size, format and target checks. The file stays in memory.
+2. **Profile:** column types and quality flags, plus a leakage check that trains one small model per column.
+3. **Train and compare:** every step that learns from data runs inside scikit-learn Pipelines, so it is fitted on training folds only.
+4. **Test once:** the winning model is evaluated a single time on held-out data.
+5. **Explain and decide:** SHAP, permutation importance, calibration and a cost-based cut-off.
+6. **Report:** a plain-English summary, results, caveats and method notes.
+
+## Walkthrough: IBM HR employee attrition
+
+A real run on the public **IBM HR Analytics Employee Attrition** dataset (1,470 employees,
+35 columns), predicting `Attrition` ("Yes" = the employee left). All numbers below come from
+this run.
+
+### 1. Upload and choose the target
+
+![Uploading the HR dataset](docs/images/2_uploading%20data.png)
+
+![Choosing Attrition as the target](docs/images/3_choose%20target.png)
+
+### 2. Data checks
+
+The app flagged `EmployeeCount` as constant and `EmployeeNumber` as ID-like and left both
+out. It also detected the class imbalance (16.2% "Yes"), so it chose models by **PR-AUC**
+instead of accuracy and weighted the models toward the rare class.
+
+![Data checks for the HR dataset](docs/images/4_check%20data.png)
+
+### 3. Train and compare
+
+Options (decision costs, tuning, AI summary, run log) sit in one collapsible box; a progress
+bar and step tracker show where the run is.
+
+![Training options](docs/images/5_train%20and%20compare%20model.png)
+
+![Training in progress](docs/images/6_train%20model%20with%20progress%20showing.png)
+
+### 4. Results
+
+**Overview.** On 294 held-out employees, the best model (logistic regression) scored
+**PR-AUC 0.561**, against **0.162** for a baseline that ignores all inputs
+(ROC-AUC 0.803).
+
+![Results overview](docs/images/7_results%20overview.png)
+
+**Models.** The simple logistic regression (PR-AUC 0.606 ± 0.082 in cross-validation) beat
+random forest (0.566 ± 0.069) and LightGBM (0.560 ± 0.051), so the tool kept the simpler,
+easier-to-explain model.
+
+![Model comparison](docs/images/8_results%20model.png)
+
+**Decisions.** Calibration made the probabilities more trustworthy (test Brier score
+0.156 → 0.102). Acting on the top 10% highest-risk employees would reach 38% of all leavers,
+3.8× better than random. With equal costs, the cut-off chosen on training data (0.38) cost
+slightly more on the test set than the default 0.50 (143 vs 129 per 1,000 employees), and the
+app says so rather than hiding it.
+
+![Decision cut-off and costs](docs/images/9_results%20dis%201.png)
+
+![Calibration and gains charts](docs/images/9_results%20dis%202.png)
+
+**What the model relies on.** `OverTime`, `JobRole` and `JobLevel` carry the most weight,
+with readable patterns such as "'Yes' (overtime) goes with more likely leaving". SHAP and
+permutation importance share 3 of their top 5 columns. These show what the model relies on,
+not what causes attrition.
+
+![What the model relies on](docs/images/10_results%20model%20rel%201.png)
+
+![Importance table with patterns](docs/images/10_results%20model%20rel%202.png)
+
+**Data and caveats.** Caveats are generated from the run itself, next to the full data-check
+table.
+
+![Caveats](docs/images/11_data%20and%20caveats%201.png)
+
+![Data checks table](docs/images/11_data%20and%20caveats%202.png)
+
+### 5. Report (HTML and PDF)
+
+The downloadable report is a single HTML file. Press Ctrl+P and choose Save as PDF for a
+paginated copy with colours, charts and page numbers kept.
+
+![HTML report](docs/images/13_report%20html.png)
+
+![PDF report, page 1](docs/images/14_report%20pdf%201.png)
+
+More PDF pages: [2](docs/images/14_report%20pdf%202.png) ·
+[3](docs/images/14_report%20pdf%203.png) · [4](docs/images/14_report%20pdf%204.png) ·
+[5](docs/images/14_report%20pdf%205.png)
+
+### About tab
+
+![About tab](docs/images/12_about.png)
 
 ## Benchmarks
 
@@ -89,6 +181,26 @@ one standard deviation; the clearest improvement is bike demand (RMSE −5% in C
 The 30-second limit was reached on Telco, bank and bike, so a rerun can give slightly
 different tuned numbers (it ran fewer than 20 trials there).
 
+**Leakage handling.** The automatic check excluded `Churn Value` and `Churn Reason`
+(Telco). Three known leaks are dropped in `datasets.json`, each with a documented reason:
+`Churn Score` (another model's prediction; flagged by the warning tier at single-column
+ROC-AUC 0.942), `duration` (bank; only known after the call), and `casual` + `registered`
+(bike; they sum to the target). The single-column check cannot catch leaks that are
+spread across columns or depend on timing, so a human review step is still needed.
+
+## Rigor, privacy and safety
+
+- **No test-set leakage:** preprocessing is fitted inside each training fold; the test set is
+  used exactly once, and tests check that flipping every test label changes no choice.
+- **Honest uncertainty:** cross-validation results are reported as mean ± standard deviation,
+  and tuning uses nested cross-validation.
+- **Uploads stay local:** files are read in memory and never written to disk; the app only
+  listens on `localhost`, and error messages never show stack traces or file paths.
+- **Untrusted text stays text:** column names and values are escaped everywhere (HTML report,
+  Markdown, charts), and spreadsheet formula injection is neutralized in exports.
+- **No hidden network calls:** MLflow's telemetry is switched off before it loads, verified by
+  a test with all network connections blocked.
+
 **Optional run tracking (MLflow, local only).** Tick "Save this run to the local MLflow log"
 in the app, or add `--track` to the benchmark command. Each run's settings, CV and test
 metrics, data profile, importance table, report and model are stored in `mlflow.db` and
@@ -98,33 +210,69 @@ metrics, data profile, importance table, report and model are stored in `mlflow.
 venv\Scripts\python.exe -m foresight.tracking
 ```
 
-MLflow sends usage telemetry over the internet by default; `foresight/tracking.py` switches
-it off before MLflow is loaded, and is the only module allowed to import MLflow. A test
-checks this in a real (non-test) environment with all network connections blocked.
-
 **Plain-English summary (template, or optionally Gemini).** Every report starts with a short
 summary written directly from the results. In the app you can instead ask Gemini to write it:
 
 1. Copy `.env.example` to `.env` and put your key after `GEMINI_API_KEY=` (never commit `.env`).
-2. Tick "Write the summary with Gemini" before training. It is off by default.
+2. Tick "Write the summary with Gemini" in the Options box before training. It is off by default.
 
 Only aggregated results are sent (scores, model names, importance shares, decision numbers),
 never data rows. Column names, class labels and the target name are replaced by placeholders
 such as `[COLUMN_1]`, so uploaded text never reaches Gemini and cannot inject instructions.
 Gemini's answer is checked before use: every number must match a real result, only known
-placeholders may appear, and causal claims, links and HTML are rejected. If any check fails
-or the call fails, the template summary is shown and the report says why. The model name is
-set in `foresight/config.py` (`GEMINI_MODEL`). Benchmarks never call Gemini.
+placeholders may appear, and causal claims, links, HTML and cut-off answers are rejected. If
+any check fails or the call fails, the template summary is shown and the report says why.
+The model name is set in `foresight/config.py` (`GEMINI_MODEL`). Benchmarks never call Gemini.
 
-**Leakage handling.** The automatic check excluded `Churn Value` and `Churn Reason`
-(Telco). Three known leaks are dropped in `datasets.json`, each with a documented reason:
-`Churn Score` (another model's prediction; flagged by the warning tier at single-column
-ROC-AUC 0.942), `duration` (bank; only known after the call), and `casual` + `registered`
-(bike; they sum to the target). The single-column check cannot catch leaks that are
-spread across columns or depend on timing, so a human review step is still needed.
+## Quickstart (Windows PowerShell)
 
-## Run tests
+```powershell
+python -m venv venv
+venv\Scripts\python.exe -m pip install -r requirements.txt
+venv\Scripts\python.exe -m streamlit run app.py
+```
+
+Local development: The app runs locally by default, and uploaded files are processed in memory rather than persisted by the application.
+
+Then open http://localhost:8501. The app is only reachable from your own computer,
+and uploaded files stay in memory (they are never written to disk). No dataset to hand?
+Click **Try demo data** for a synthetic churn dataset.
+
+Run the tests (300+ automated tests):
 
 ```powershell
 venv\Scripts\python.exe -m pytest
 ```
+
+## Project structure
+
+```
+app.py                  Streamlit app (UI)
+foresight/
+  config.py             all limits, thresholds, seeds and colours
+  ingest.py             safe CSV loading, validation, problem-type detection
+  profile.py            data profiling and leakage check
+  preprocess.py         leakage-safe Pipelines (imputation, scaling, encoding)
+  models.py             baselines, candidates and metrics
+  train.py              split, cross-validation, selection, one test evaluation
+  tune.py               optional Optuna tuning with nested CV
+  explain.py            SHAP and permutation importance
+  decision.py           calibration, cost-based cut-off, lift
+  narrate.py            template summary and optional checked Gemini summary
+  tracking.py           optional local MLflow tracking (telemetry off)
+  report.py             HTML report (Jinja2, autoescaped)
+benchmarks/             benchmark runner, dataset list and results
+tests/                  one test file per module
+docs/images/            screenshots used in this README
+```
+
+## Limitations
+
+- The leakage check looks at one column at a time; leaks spread across columns or caused by
+  timing still need a human review.
+- Date columns are not used as model inputs yet.
+- Results assume future data looks like the training data.
+
+## Author
+
+Built by **Hrisita Mohapatra**.
