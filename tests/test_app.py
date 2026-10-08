@@ -42,20 +42,85 @@ def test_chart_label_escapes_html_and_truncates():
     assert len(app.chart_label("a" * 200)) == 60
 
 
-def test_app_never_renders_raw_html():
+ALLOWED_HTML_CONSTANTS = {"PAGE_STYLE", "HEADER_HTML"}
+
+
+def test_raw_html_only_from_fixed_constants():
+    """st.html may only receive PAGE_STYLE or HEADER_HTML, and those must be
+    plain string literals written in app.py (no f-strings, no data)."""
+    import ast
+
     source = (config.PROJECT_ROOT / "app.py").read_text(encoding="utf-8")
     assert "unsafe_allow_html" not in source
-    assert "st.html" not in source and "components.html" not in source
+    assert "components.html" not in source and "components.v1" not in source
+    tree = ast.parse(source)
+
+    html_calls = [node for node in ast.walk(tree)
+                  if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+                  and node.func.attr == "html"]
+    assert len(html_calls) == 2
+    for call in html_calls:
+        assert len(call.args) == 1 and not call.keywords
+        assert isinstance(call.args[0], ast.Name), "st.html must get a named constant"
+        assert call.args[0].id in ALLOWED_HTML_CONSTANTS
+
+    # Each constant is assigned exactly once, at module level, to a plain string.
+    assignments = [node for node in tree.body
+                   if isinstance(node, ast.Assign) and isinstance(node.targets[0], ast.Name)
+                   and node.targets[0].id in ALLOWED_HTML_CONSTANTS]
+    assert sorted(a.targets[0].id for a in assignments) == sorted(ALLOWED_HTML_CONSTANTS)
+    for a in assignments:
+        assert isinstance(a.value, ast.Constant) and isinstance(a.value.value, str)
+
+
+def test_demo_data_is_valid_and_reproducible():
+    from foresight.ingest import load_csv
+
+    raw = app.make_demo_csv()
+    assert raw == app.make_demo_csv()                  # fixed seed
+    df = load_csv(raw, app.DEMO_NAME)                  # passes the real upload checks
+    assert len(df) == 1500 and "churned" in df.columns
 
 
 # ---------------------------------------------------------------------------
-# Upload screen
+# Page: header, menu, upload screen, demo data, About, progress
 # ---------------------------------------------------------------------------
-def test_upload_screen_runs():
-    at = AppTest.from_file(APP_PATH, default_timeout=60).run()
-    assert not at.exception
-    assert at.title[0].value == "Foresight AutoML"
-    assert any("Upload a CSV" in i.value for i in at.info)
+@pytest.fixture
+def page(tmp_path, monkeypatch):
+    monkeypatch.setattr(config, "ENV_FILE", tmp_path / "no.env")
+    return AppTest.from_file(APP_PATH, default_timeout=180).run()
+
+
+def sidebar_text(at) -> str:
+    return "\n".join(m.value for m in at.sidebar.markdown)
+
+
+def test_upload_screen_runs(page):
+    assert not page.exception
+    assert [t.label for t in page.tabs[:2]] == ["Analyze", "About"]
+    assert any("Upload a CSV" in i.value for i in page.info)
+    assert "**Upload data**" in sidebar_text(page)        # step 1 is current
+
+
+def test_about_tab(page):
+    about = "\n".join(m.value for m in page.tabs[1].markdown)
+    assert "Built by **Hrisita Mohapatra**" in about
+    assert "github.com/hrisitamohapatra/foresight-automl" in about
+
+
+def test_demo_data_flow(page):
+    next(b for b in page.button if b.label == "Try demo data").click().run()
+    assert not page.exception
+    assert any("1,500 rows × 9 columns" in m.value for m in page.markdown)
+    assert "**Choose target**" in sidebar_text(page)
+    page.selectbox[0].select("churned").run()
+    next(b for b in page.button if b.label == "Run data checks").click().run()
+    assert not page.exception
+    # The planted leak is offered as "keep anyway" (label is escaped: refund\_issued).
+    assert any(c.label.startswith("Keep refund") for c in page.checkbox)
+    assert "**Train models**" in sidebar_text(page)
+    next(b for b in page.button if b.label == "Remove demo data").click().run()
+    assert any("Upload a CSV" in i.value for i in page.info)
 
 
 # ---------------------------------------------------------------------------

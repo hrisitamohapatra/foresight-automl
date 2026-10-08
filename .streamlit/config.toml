@@ -6,6 +6,9 @@ secondaryBackgroundColor = "#F3F7FD"
 textColor = "#1B2A41"
 # st.warning uses the yellow palette: use the muted amber reserved for warnings.
 yellowColor = "#E8A317"
+# Sharp, square corners everywhere (inputs, cards, alerts, buttons).
+baseRadius = "0px"
+buttonRadius = "0px"
 
 [server]
 # Matches MAX_FILE_SIZE_MB in foresight/config.py
