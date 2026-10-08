@@ -29,7 +29,7 @@
   th { background: var(--bg2); text-align: left; }
   th, td { padding: 8px 10px; border-bottom: 1px solid var(--bg2); vertical-align: top; }
   tr.best td { font-weight: 600; background: #EAF1FC; }
-  .tag { background: var(--primary); color: #fff; border-radius: 4px;
+  .tag { background: var(--primary); color: #fff; border-radius: 0;
          padding: 1px 6px; font-size: 0.75rem; margin-left: 6px; }
   .warn { border-left: 4px solid var(--warn); background: #FDF6E7;
           padding: 8px 12px; margin: 8px 0; }
@@ -39,10 +39,41 @@
   h3 { color: var(--dark); font-size: 1.05rem; margin-top: 20px; }
   ul { padding-left: 20px; }
   .small { font-size: 0.85rem; opacity: 0.8; }
+  .print-tip { background: var(--bg2); border-left: 4px solid var(--primary);
+               padding: 6px 12px; font-size: 0.85rem; margin-bottom: 18px; }
+
+  /* ---- Print / "Save as PDF" (browser: Ctrl+P) ---------------------------- */
+  @page {
+    size: A4;
+    margin: 16mm 14mm 18mm;
+    @bottom-left  { content: "Foresight AutoML report"; font-size: 8pt; color: #6B7A90; }
+    @bottom-right { content: "Page " counter(page) " of " counter(pages);
+                    font-size: 8pt; color: #6B7A90; }
+  }
+  @media print {
+    /* Keep colours and chart backgrounds instead of printing them white. */
+    * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    body { font-size: 10pt; line-height: 1.45; }
+    main { max-width: none; padding: 0; }
+    .print-tip { display: none; }
+    h1 { font-size: 18pt; }
+    h2 { font-size: 13pt; margin-top: 20px; break-after: avoid; }
+    h3 { font-size: 11pt; break-after: avoid; }
+    /* Do not split tables rows, charts, notes or short lists across pages. */
+    tr, img, .warn, .note, .question, .headline, li { break-inside: avoid; }
+    .table-wrap { overflow: visible; }
+    table { font-size: 8.5pt; margin: 8px 0; }
+    th, td { padding: 4px 6px; }
+    .charts img { max-width: 70%; }
+    img { max-height: 105mm; width: auto; }
+  }
 </style>
 </head>
 <body>
 <main>
+
+<p class="print-tip">Tip: to save this report as a PDF, press <strong>Ctrl+P</strong>
+  (Cmd+P on a Mac) and choose <strong>Save as PDF</strong>. This tip is not printed.</p>
 
 <header>
   <h1>Foresight AutoML report</h1>

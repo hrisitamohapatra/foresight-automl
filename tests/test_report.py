@@ -100,6 +100,16 @@ def test_report_sections(binary_html):
         assert f"<h2>{heading}</h2>" in binary_html
 
 
+def test_print_friendly_for_pdf(binary_html):
+    # Browser "Save as PDF": print styles exist, colours are kept, the on-screen
+    # tip is hidden in print, and rows/charts are not split across pages.
+    assert "@media print" in binary_html and "@page" in binary_html
+    assert "print-color-adjust: exact" in binary_html
+    assert "Save as PDF" in binary_html
+    assert ".print-tip { display: none; }" in binary_html
+    assert "break-inside: avoid" in binary_html
+
+
 def test_non_causal_disclaimer(binary_html):
     assert "not what causes the outcome" in binary_html
 

@@ -68,13 +68,18 @@ DEMO_NAME = "demo_churn (synthetic).csv"
 # ---------------------------------------------------------------------------
 PAGE_STYLE = """
 <style>
-  .block-container { padding-top: 1.2rem; max-width: 1240px; }
+  .block-container { padding-top: 0; max-width: 1240px; }
   header[data-testid="stHeader"] { background: transparent; }
+  /* Let the hero and the top menu span the whole main area while the content
+     column keeps its width: measure the main area as a container, then pull
+     these two elements out to its edges (cqw = % of that width). */
+  [data-testid="stMain"] { container-type: inline-size; }
 
   /* Hero header: light-to-deep-blue gradient with a fine vertical line texture.
      Square corners on purpose. Fonts are system fonts (no web-font downloads). */
   .fs-hero {
     position: relative; border-radius: 0; overflow: hidden;
+    margin-inline: calc(50% - 50cqw);            /* full width of the main area */
     min-height: 330px; padding: 34px 34px 38px;
     display: flex; flex-direction: column; justify-content: flex-end;
     background-image:
@@ -103,12 +108,15 @@ PAGE_STYLE = """
 
   /* Top menu (Analyze / About): centered, uppercase, square underline. */
   .stTabs [role="tablist"] { display: flex; justify-content: center; gap: 4px;
-                             border-bottom: 1px solid #DCE6F5; }
+                             border-bottom: 1px solid #DCE6F5;
+                             margin-inline: calc(50% - 50cqw);   /* full width */
+                             padding-inline: calc(50cqw - 50%); }
   .stTabs [data-testid="stTab"] { padding: 10px 22px; border-radius: 0; }
   .stTabs [data-testid="stTab"] p { font-size: 0.86rem; font-weight: 600;
                                     letter-spacing: 1.4px; text-transform: uppercase; }
   /* Tabs inside the results keep normal, left-aligned labels. */
-  .stTabs .stTabs [role="tablist"] { justify-content: flex-start; }
+  .stTabs .stTabs [role="tablist"] { justify-content: flex-start;
+                                     margin-inline: 0; padding-inline: 0; }
   .stTabs .stTabs [data-testid="stTab"] p { font-size: 0.95rem; letter-spacing: 0;
                                             text-transform: none; }
 
@@ -402,6 +410,8 @@ def show_results(result: TrainResult, explanation: Explanation,
         st.download_button("Download the full report (HTML)", data=report_html,
                            file_name="foresight_report.html", mime="text/html", type="primary",
                            icon=":material/download:")
+        st.caption("Need a PDF? Open the downloaded report and press Ctrl+P "
+                   "(Cmd+P on a Mac), then choose Save as PDF.")
 
     with models:
         st.subheader("Model comparison")
