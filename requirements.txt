@@ -13,3 +13,5 @@ jinja2==3.1.6
 streamlit==1.65.0
 pytest==9.1.1
 joblib==1.6.0
+# Phase 2
+optuna==5.0.0

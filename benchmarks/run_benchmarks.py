@@ -37,6 +37,7 @@ BENCH_DIR = Path(__file__).resolve().parent
 DATA_DIR = BENCH_DIR / "data"
 DATASETS_FILE = BENCH_DIR / "datasets.json"
 RESULTS_FILE = BENCH_DIR / "results.csv"
+TUNED_RESULTS_FILE = BENCH_DIR / "results_tuned.csv"
 REPORTS_DIR = config.OUTPUT_DIR / "benchmark_reports"
 
 
@@ -92,7 +93,8 @@ def read_dataset(spec: dict, data_dir: Path = DATA_DIR) -> pd.DataFrame:
 # ---------------------------------------------------------------------------
 # Running one dataset
 # ---------------------------------------------------------------------------
-def run_one(spec: dict, data_dir: Path = DATA_DIR, save_report: bool = True) -> dict:
+def run_one(spec: dict, data_dir: Path = DATA_DIR, save_report: bool = True,
+            tune: bool = False) -> dict:
     """Train and evaluate one dataset. Returns one results row."""
     started = time.perf_counter()
     df = read_dataset(spec, data_dir)
@@ -107,7 +109,7 @@ def run_one(spec: dict, data_dir: Path = DATA_DIR, save_report: bool = True) -> 
 
     result = run_training(clean, spec["target"], problem_type,
                           positive_class=spec.get("positive_class"),
-                          n_dropped_target=n_dropped)
+                          n_dropped_target=n_dropped, tune=tune)
     train_seconds = time.perf_counter() - started
     explanation = explain_model(result)
 
@@ -120,7 +122,8 @@ def run_one(spec: dict, data_dir: Path = DATA_DIR, save_report: bool = True) -> 
         REPORTS_DIR.mkdir(parents=True, exist_ok=True)
         html = build_report(result, explanation, dataset_name=f"{spec['name']}.csv",
                             decision=decision)
-        (REPORTS_DIR / f"{spec['name']}.html").write_text(html, encoding="utf-8")
+        suffix = "_tuned" if tune else ""
+        (REPORTS_DIR / f"{spec['name']}{suffix}.html").write_text(html, encoding="utf-8")
 
     key = result.selection_metric
     baseline = result.result_for("dummy")
@@ -131,6 +134,8 @@ def run_one(spec: dict, data_dir: Path = DATA_DIR, save_report: bool = True) -> 
         "rows": len(clean),
         "columns": df.shape[1] - 1,
         "problem_type": problem_type,
+        "tuned": tune,
+        "tuning_hit_time_limit": result.tuning_hit_time_limit,
         "imbalanced": result.profile.is_imbalanced,
         "metric": key,
         "baseline_score": baseline.cv_mean.get(key),
@@ -172,12 +177,12 @@ def load_specs(path: Path = DATASETS_FILE) -> list[dict]:
 
 
 def run_all(specs: list[dict], data_dir: Path = DATA_DIR, results_file: Path = RESULTS_FILE,
-            save_report: bool = True) -> pd.DataFrame:
+            save_report: bool = True, tune: bool = False) -> pd.DataFrame:
     rows = []
     for spec in specs:
-        print(f"Running {spec['name']} ...", flush=True)
+        print(f"Running {spec['name']}{' with tuning' if tune else ''} ...", flush=True)
         try:
-            row = run_one(spec, data_dir, save_report)
+            row = run_one(spec, data_dir, save_report, tune)
             print(f"  done in {row['total_seconds']}s: best {row['best_model']}, "
                   f"{row['metric']} CV {row['best_score']:.3f} ± {row['best_std']:.3f}, "
                   f"test {row['test_score']:.3f}", flush=True)
@@ -197,6 +202,8 @@ def run_all(specs: list[dict], data_dir: Path = DATA_DIR, results_file: Path = R
 def main():
     parser = argparse.ArgumentParser(description="Run Foresight AutoML benchmarks.")
     parser.add_argument("--only", nargs="+", help="names of datasets to run")
+    parser.add_argument("--tune", action="store_true",
+                        help="also run Optuna tuning (nested CV); writes results_tuned.csv")
     args = parser.parse_args()
 
     specs = load_specs()
@@ -205,8 +212,10 @@ def main():
         if not specs:
             parser.error("none of the given dataset names are in datasets.json")
 
-    results = run_all(specs)
-    print(f"\nWrote {len(results)} rows to {RESULTS_FILE.relative_to(config.PROJECT_ROOT)}")
+    # Tuned runs go to a separate file so the untuned results stay as they are.
+    results_file = TUNED_RESULTS_FILE if args.tune else RESULTS_FILE
+    results = run_all(specs, results_file=results_file, tune=args.tune)
+    print(f"\nWrote {len(results)} rows to {results_file.relative_to(config.PROJECT_ROOT)}")
     print(f"Reports saved in {REPORTS_DIR.relative_to(config.PROJECT_ROOT)}")
 
 

@@ -27,11 +27,16 @@ from foresight import config
 # ---------------------------------------------------------------------------
 @dataclass
 class ModelSpec:
-    key: str                  # short id, e.g. "lightgbm"
+    key: str                  # short id, e.g. "lightgbm" or "lightgbm_tuned"
     name: str                 # display name for the UI and report
     role: str                 # "baseline", "simple", or "candidate"
     scale: bool               # does it need standardized numbers?
     make: Callable[[], object]  # returns a fresh, unfitted estimator
+    family: str = ""          # model type, shared by tuned variants (e.g. "lightgbm")
+
+    def __post_init__(self):
+        if not self.family:
+            self.family = self.key
 
 
 def get_models(problem_type: str, balanced: bool = False) -> list[ModelSpec]:

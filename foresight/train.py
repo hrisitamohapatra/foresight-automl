@@ -28,6 +28,7 @@ from foresight.ingest import IngestError, check_target_for_problem_type
 from foresight.models import get_metrics, get_models, score_model, selection_metric
 from foresight.preprocess import build_pipeline
 from foresight.profile import DataProfile, profile_data
+from foresight.tune import TUNABLE, nested_cv, search, tuned_spec
 
 
 class TrainError(Exception):
@@ -43,6 +44,7 @@ class ModelResult:
     cv_std: dict[str, float] = field(default_factory=dict)
     fit_seconds: float = 0.0          # average training time per fold
     error: str = ""                   # set if this model failed
+    tuned_params: dict = field(default_factory=dict)   # final tuned settings, if any
 
 
 @dataclass
@@ -67,6 +69,9 @@ class TrainResult:
     y_test: np.ndarray
     runtime_seconds: float
     included_overrides: list[str] = field(default_factory=list)
+    best_spec: object = None          # ModelSpec that builds the best model (unfitted)
+    tuned: bool = False               # was Optuna tuning switched on?
+    tuning_hit_time_limit: bool = False
 
     @property
     def best(self) -> ModelResult:
@@ -189,8 +194,13 @@ def run_training(
     n_dropped_target: int = 0,
     save: bool = False,
     on_progress: Callable[[str, float], None] | None = None,
+    tune: bool = False,
 ) -> TrainResult:
-    """Train, compare, select, and test. `df` should come from ingest.prepare_target."""
+    """Train, compare, select, and test. `df` should come from ingest.prepare_target.
+
+    tune=True also adds Optuna-tuned versions of random forest and LightGBM,
+    scored with nested cross-validation (see foresight/tune.py).
+    """
     started = time.perf_counter()
 
     def progress(message: str, fraction: float):
@@ -215,9 +225,12 @@ def run_training(
     specs = get_models(problem_type, balanced=profile.is_imbalanced)
     cv = _cv_splitter(problem_type)
     results: list[ModelResult] = []
+    metric_key = selection_metric(problem_type, profile.is_imbalanced)
+    selection = next(m for m in metrics if m.key == metric_key)
+    cv_share = 0.45 if tune else 0.70   # share of the progress bar for plain CV
 
     for i, spec in enumerate(specs):
-        progress(f"Cross-validating: {spec.name}", 0.10 + 0.70 * i / len(specs))
+        progress(f"Cross-validating: {spec.name}", 0.10 + cv_share * i / len(specs))
         result = ModelResult(spec.key, spec.name, spec.role)
         pipeline = build_pipeline(profile, spec.make(), scale=spec.scale)
         try:
@@ -237,11 +250,33 @@ def run_training(
         result.fit_seconds = float(np.mean(cv_out["fit_time"]))
         results.append(result)
 
+    # 3b. Optional: tuned versions, scored by nested CV on the SAME outer folds,
+    #     so tuned and untuned scores are directly comparable.
+    hit_time_limit = False
+    if tune:
+        tunable = [s for s in specs if s.family in TUNABLE]
+        for i, spec in enumerate(tunable):
+            progress(f"Tuning (nested cross-validation): {spec.name}",
+                     0.55 + 0.25 * i / len(tunable))
+            result = ModelResult(f"{spec.key}_tuned", f"{spec.name} (tuned)", "candidate")
+            try:
+                nested = nested_cv(spec, profile, X_train, y_train, problem_type,
+                                   metrics, selection.scorer, cv)
+            except Exception:
+                result.error = "This model could not be tuned on this data."
+                results.append(result)
+                continue
+            for m in metrics:
+                result.cv_mean[m.key] = float(np.mean(nested.fold_scores[m.key]))
+                result.cv_std[m.key] = float(np.std(nested.fold_scores[m.key]))
+            result.fit_seconds = nested.fit_seconds
+            hit_time_limit |= nested.hit_time_limit
+            results.append(result)
+
     # 4. Pick the best model by mean CV score. Models are listed simplest
-    #    first and a model must be strictly better to replace the leader,
-    #    so ties go to the simpler model.
-    metric_key = selection_metric(problem_type, profile.is_imbalanced)
-    higher = next(m for m in metrics if m.key == metric_key).higher_is_better
+    #    first (tuned versions last) and a model must be strictly better to
+    #    replace the leader, so ties go to the simpler model.
+    higher = selection.higher_is_better
     best_key, best_score = None, None
     for r in results:
         if not r.error and _is_better(r.cv_mean[metric_key], best_score, higher):
@@ -251,7 +286,15 @@ def run_training(
 
     # 5. Refit the best model on the full training set.
     progress("Training the best model on all training data", 0.85)
-    best_spec = next(s for s in specs if s.key == best_key)
+    if best_key.endswith("_tuned"):
+        # One more search, now on the whole training set, for the final settings.
+        base_spec = next(s for s in specs if f"{s.key}_tuned" == best_key)
+        found = search(base_spec, profile, X_train, y_train, problem_type, selection.scorer)
+        hit_time_limit |= found.hit_time_limit
+        best_spec = tuned_spec(base_spec, found.params)
+        next(r for r in results if r.key == best_key).tuned_params = found.params
+    else:
+        best_spec = next(s for s in specs if s.key == best_key)
     best_pipeline = build_pipeline(profile, best_spec.make(), scale=best_spec.scale)
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", ConvergenceWarning)
@@ -282,6 +325,9 @@ def run_training(
         y_test=y_test,
         runtime_seconds=time.perf_counter() - started,
         included_overrides=included,
+        best_spec=best_spec,
+        tuned=tune,
+        tuning_hit_time_limit=hit_time_limit,
     )
 
     # 7. Save the fitted model (optional).

@@ -128,6 +128,17 @@ SELECTION_METRIC = {
 }
 
 # ---------------------------------------------------------------------------
+# Hyperparameter tuning (Optuna, optional, off by default)
+# ---------------------------------------------------------------------------
+# Tuning uses NESTED cross-validation: inside each of the CV_FOLDS outer
+# folds, a separate Optuna search runs on that fold's training part only
+# (with TUNE_INNER_FOLDS inner folds). The outer folds therefore give an
+# honest score for "tune, then train", not an optimistic one.
+TUNE_TRIALS = 20             # trials per search
+TUNE_TIMEOUT_SECONDS = 30    # safety limit per search; if reached, fewer trials run
+TUNE_INNER_FOLDS = 3
+
+# ---------------------------------------------------------------------------
 # Explanations
 # ---------------------------------------------------------------------------
 # SHAP is computed on a random sample of held-out test rows. Exact SHAP for a

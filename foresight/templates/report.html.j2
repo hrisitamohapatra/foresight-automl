@@ -211,6 +211,13 @@
     <li>All preprocessing (filling missing values, scaling, encoding) was learned inside
         each cross-validation training fold only.</li>
     <li>{{ cv_folds }}-fold cross-validation for model comparison; the test set was used once.</li>
+    {% if tuning %}
+    <li>Tuned models: Optuna (up to {{ tuning.trials }} trials, {{ tuning.timeout }} seconds per
+        search) inside nested cross-validation: each outer fold ran its own search on its
+        training part only ({{ tuning.inner_folds }} inner folds), so tuned and untuned scores
+        are comparable and not optimistic.
+        {% if tuning.final_params %}Final tuned settings: {{ tuning.final_params }}.{% endif %}</li>
+    {% endif %}
     {% if decision and decision.applicable %}
     <li>Calibration and the cut-off were chosen on out-of-fold predictions for the training
         data (calibration nested inside each fold), then checked once on the test set.</li>

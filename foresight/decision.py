@@ -23,7 +23,6 @@ from sklearn.metrics import brier_score_loss
 from sklearn.model_selection import StratifiedKFold, cross_val_predict
 
 from foresight import config
-from foresight.models import get_models
 from foresight.preprocess import build_pipeline
 from foresight.train import TrainResult
 
@@ -177,9 +176,8 @@ def analyze_decision(result: TrainResult, cost_fp: float = 1.0,
     seed = config.RANDOM_SEED
     outer_cv = StratifiedKFold(config.CV_FOLDS, shuffle=True, random_state=seed)
 
-    # Rebuild the (unfitted) winning pipeline.
-    spec = next(s for s in get_models("binary", balanced=result.profile.is_imbalanced)
-                if s.key == result.best_key)
+    # Rebuild the (unfitted) winning pipeline, including any tuned settings.
+    spec = result.best_spec
 
     def fresh_pipeline():
         return build_pipeline(result.profile, spec.make(), scale=spec.scale)

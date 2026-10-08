@@ -66,6 +66,29 @@ optimum for calibrated probabilities, 1 / (1 + 5) ≈ 0.17, and cuts the test-se
 With equal costs the chosen cut-off stays near 0.50, as expected; on Telco it was marginally
 worse than 0.50 on the test set, which the report states rather than hides.
 
+**Optional tuning.** `--tune` (or the "Also tune" checkbox in the app) adds Optuna-tuned
+random forest and LightGBM. Tuning runs inside **nested cross-validation**: each outer fold
+gets its own search on its training part only, so tuned scores are directly comparable with
+the untuned ones and not optimistic. Tuned results are written to `benchmarks/results_tuned.csv`.
+
+```powershell
+venv\Scripts\python.exe -m benchmarks.run_benchmarks --tune
+```
+
+Latest tuned run (up to 20 trials and 30 seconds per search):
+
+| Dataset | Metric | Untuned best (CV) | Tuned best, nested CV | Test: untuned → tuned | Run time |
+|---|---|---|---|---|---|
+| Telco churn | ROC-AUC | Logistic regression 0.858 ± 0.013 | LightGBM 0.867 ± 0.011 | 0.847 → 0.858 | 4.5 min |
+| German credit | ROC-AUC | Random forest 0.791 ± 0.039 | LightGBM 0.797 ± 0.044 | 0.782 → 0.788 | 2.5 min |
+| Bank marketing | PR-AUC | LightGBM 0.443 ± 0.011 | LightGBM 0.453 ± 0.014 | 0.464 → 0.468 | 6.5 min |
+| Bike sharing | RMSE (lower is better) | LightGBM 41.2 ± 1.6 | LightGBM 38.9 ± 1.0 | 39.0 → 36.5 | 6.3 min |
+
+Tuning helped on every dataset, but on the three classification datasets the gain is within
+one standard deviation; the clearest improvement is bike demand (RMSE −5% in CV, −6% on test).
+The 30-second limit was reached on Telco, bank and bike, so a rerun can give slightly
+different tuned numbers (it ran fewer than 20 trials there).
+
 **Leakage handling.** The automatic check excluded `Churn Value` and `Churn Reason`
 (Telco). Three known leaks are dropped in `datasets.json`, each with a documented reason:
 `Churn Score` (another model's prediction; flagged by the warning tier at single-column

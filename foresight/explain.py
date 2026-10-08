@@ -139,7 +139,9 @@ def explain_model(result: TrainResult) -> Explanation:
     notes: list[str] = []
 
     # --- SHAP on a sample of test rows --------------------------------------
-    max_rows = (config.SHAP_SAMPLE_ROWS_FOREST if result.best_key == "random_forest"
+    # The model type ("family") is the same for tuned and untuned versions.
+    family = result.best_spec.family if result.best_spec else result.best_key
+    max_rows = (config.SHAP_SAMPLE_ROWS_FOREST if family == "random_forest"
                 else config.SHAP_SAMPLE_ROWS)
     n_shap = min(max_rows, result.n_test)
     shap_idx = rng.choice(result.n_test, size=n_shap, replace=False)
@@ -154,7 +156,7 @@ def explain_model(result: TrainResult) -> Explanation:
     try:
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
-            values = _raw_shap_values(result.best_key, model, Xt, Xt_background)
+            values = _raw_shap_values(family, model, Xt, Xt_background)
         if values is not None:
             col_shap = _to_columns(values, sources, columns)
             axes = (0,) if col_shap.ndim == 2 else (0, 2)
@@ -170,7 +172,7 @@ def explain_model(result: TrainResult) -> Explanation:
         notes.append("SHAP values could not be computed for this model; "
                      "the ranking uses permutation importance only.")
 
-    if result.best_key == "dummy":
+    if family == "dummy":
         notes.append("The best model was the baseline, which ignores all inputs. "
                      "No column showed a pattern the models could learn reliably.")
 

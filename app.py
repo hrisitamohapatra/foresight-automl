@@ -371,12 +371,19 @@ def workflow(df: pd.DataFrame, dataset_name: str, file_key: str):
                                      min_value=0.01, max_value=float(config.MAX_COST),
                                      value=1.0, step=1.0)
 
+    tune = st.checkbox(
+        "Also tune random forest and LightGBM (slower)",
+        help=f"Runs an Optuna search (up to {config.TUNE_TRIALS} trials) inside each "
+             f"cross-validation fold, so tuned scores stay honest. Can take several "
+             f"minutes on large files.")
+
     if st.button("Train models", type="primary"):
         bar = st.progress(0.0, text="Starting")
         try:
             result = run_training(clean, target, problem_type, positive_class,
                                   include_columns=include, n_dropped_target=n_dropped,
-                                  on_progress=lambda msg, frac: bar.progress(frac, text=msg))
+                                  on_progress=lambda msg, frac: bar.progress(frac, text=msg),
+                                  tune=tune)
             bar.progress(1.0, text="Explaining the model and choosing a cut-off")
             explanation = explain_model(result)
             decision = analyze_decision(result, cost_fp=float(cost_fp), cost_fn=float(cost_fn))

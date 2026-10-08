@@ -295,6 +295,9 @@ def caveats(result: TrainResult, explanation: Explanation) -> list[str]:
         items.append(f"Column '{name}' was flagged as possible target leakage but "
                      "was kept at the user's request. If it is not known at "
                      "prediction time, real-world results will be worse than reported.")
+    if result.tuning_hit_time_limit:
+        items.append("Tuning reached its time limit before finishing all trials, so "
+                     "re-running may give slightly different tuned results.")
     if result.n_dropped_target:
         items.append(f"{result.n_dropped_target:,} rows were removed because the "
                      "target value was missing.")
@@ -390,6 +393,23 @@ def build_context(result: TrainResult, explanation: Explanation,
         "importance_chart": importance_chart(explanation),
         "model_chart": model_chart(result),
         "decision": decision_context(decision),
+        "tuning": tuning_context(result),
+    }
+
+
+def tuning_context(result: TrainResult) -> dict | None:
+    """Method notes for Optuna tuning, if it was switched on."""
+    if not result.tuned:
+        return None
+    params = result.best.tuned_params
+    return {
+        "trials": config.TUNE_TRIALS,
+        "timeout": config.TUNE_TIMEOUT_SECONDS,
+        "inner_folds": config.TUNE_INNER_FOLDS,
+        "final_params": ", ".join(
+            f"{k} = {v:.3g}" if isinstance(v, float) else f"{k} = {v}"
+            for k, v in params.items()
+        ),
     }
 
 
