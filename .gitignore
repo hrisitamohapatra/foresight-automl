@@ -17,5 +17,9 @@ outputs/
 # Benchmark datasets (downloaded manually, not committed)
 benchmarks/data/
 
+# MLflow tracking data (local only)
+mlflow.db
+mlruns/
+
 # Local Claude Code tool settings
 .claude/

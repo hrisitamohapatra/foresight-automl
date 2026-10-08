@@ -377,6 +377,11 @@ def workflow(df: pd.DataFrame, dataset_name: str, file_key: str):
              f"cross-validation fold, so tuned scores stay honest. Can take several "
              f"minutes on large files.")
 
+    track = st.checkbox(
+        "Save this run to the local MLflow log",
+        help="Stores settings, scores, the report and the model in mlflow.db and mlruns/ "
+             "in the project folder, so runs can be compared later. Nothing is sent online.")
+
     if st.button("Train models", type="primary"):
         bar = st.progress(0.0, text="Starting")
         try:
@@ -389,6 +394,12 @@ def workflow(df: pd.DataFrame, dataset_name: str, file_key: str):
             decision = analyze_decision(result, cost_fp=float(cost_fp), cost_fn=float(cost_fn))
             report_html = build_report(result, explanation, dataset_name, question, decision)
             state.outputs = (result, explanation, decision, report_html)
+            if track:
+                # Imported only when needed: tracking.py switches off MLflow's
+                # internet telemetry before MLflow itself is loaded.
+                from foresight import tracking
+                tracking.log_run(result, explanation, decision, report_html, dataset_name)
+                st.toast("Run saved to the local MLflow log.")
         except (TrainError, DecisionError) as err:
             st.error(str(err))
             return

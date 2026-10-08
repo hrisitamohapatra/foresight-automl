@@ -89,6 +89,19 @@ one standard deviation; the clearest improvement is bike demand (RMSE −5% in C
 The 30-second limit was reached on Telco, bank and bike, so a rerun can give slightly
 different tuned numbers (it ran fewer than 20 trials there).
 
+**Optional run tracking (MLflow, local only).** Tick "Save this run to the local MLflow log"
+in the app, or add `--track` to the benchmark command. Each run's settings, CV and test
+metrics, data profile, importance table, report and model are stored in `mlflow.db` and
+`mlruns/` (both git-ignored). List recent runs with:
+
+```powershell
+venv\Scripts\python.exe -m foresight.tracking
+```
+
+MLflow sends usage telemetry over the internet by default; `foresight/tracking.py` switches
+it off before MLflow is loaded, and is the only module allowed to import MLflow. A test
+checks this in a real (non-test) environment with all network connections blocked.
+
 **Leakage handling.** The automatic check excluded `Churn Value` and `Churn Reason`
 (Telco). Three known leaks are dropped in `datasets.json`, each with a documented reason:
 `Churn Score` (another model's prediction; flagged by the warning tier at single-column

@@ -94,7 +94,7 @@ def read_dataset(spec: dict, data_dir: Path = DATA_DIR) -> pd.DataFrame:
 # Running one dataset
 # ---------------------------------------------------------------------------
 def run_one(spec: dict, data_dir: Path = DATA_DIR, save_report: bool = True,
-            tune: bool = False) -> dict:
+            tune: bool = False, track: bool = False) -> dict:
     """Train and evaluate one dataset. Returns one results row."""
     started = time.perf_counter()
     df = read_dataset(spec, data_dir)
@@ -118,12 +118,17 @@ def run_one(spec: dict, data_dir: Path = DATA_DIR, save_report: bool = True,
     cost_fp, cost_fn = costs.get("false_alarm", 1.0), costs.get("missed", 1.0)
     decision = analyze_decision(result, cost_fp=cost_fp, cost_fn=cost_fn)
 
-    if save_report:
-        REPORTS_DIR.mkdir(parents=True, exist_ok=True)
+    html = ""
+    if save_report or track:
         html = build_report(result, explanation, dataset_name=f"{spec['name']}.csv",
                             decision=decision)
+    if save_report:
+        REPORTS_DIR.mkdir(parents=True, exist_ok=True)
         suffix = "_tuned" if tune else ""
         (REPORTS_DIR / f"{spec['name']}{suffix}.html").write_text(html, encoding="utf-8")
+    if track:
+        from foresight import tracking   # switches MLflow telemetry off before loading it
+        tracking.log_run(result, explanation, decision, html, f"{spec['name']}.csv")
 
     key = result.selection_metric
     baseline = result.result_for("dummy")
@@ -177,12 +182,12 @@ def load_specs(path: Path = DATASETS_FILE) -> list[dict]:
 
 
 def run_all(specs: list[dict], data_dir: Path = DATA_DIR, results_file: Path = RESULTS_FILE,
-            save_report: bool = True, tune: bool = False) -> pd.DataFrame:
+            save_report: bool = True, tune: bool = False, track: bool = False) -> pd.DataFrame:
     rows = []
     for spec in specs:
         print(f"Running {spec['name']}{' with tuning' if tune else ''} ...", flush=True)
         try:
-            row = run_one(spec, data_dir, save_report, tune)
+            row = run_one(spec, data_dir, save_report, tune, track)
             print(f"  done in {row['total_seconds']}s: best {row['best_model']}, "
                   f"{row['metric']} CV {row['best_score']:.3f} ± {row['best_std']:.3f}, "
                   f"test {row['test_score']:.3f}", flush=True)
@@ -204,6 +209,8 @@ def main():
     parser.add_argument("--only", nargs="+", help="names of datasets to run")
     parser.add_argument("--tune", action="store_true",
                         help="also run Optuna tuning (nested CV); writes results_tuned.csv")
+    parser.add_argument("--track", action="store_true",
+                        help="also save each run to the local MLflow log (mlflow.db)")
     args = parser.parse_args()
 
     specs = load_specs()
@@ -214,7 +221,7 @@ def main():
 
     # Tuned runs go to a separate file so the untuned results stay as they are.
     results_file = TUNED_RESULTS_FILE if args.tune else RESULTS_FILE
-    results = run_all(specs, results_file=results_file, tune=args.tune)
+    results = run_all(specs, results_file=results_file, tune=args.tune, track=args.track)
     print(f"\nWrote {len(results)} rows to {results_file.relative_to(config.PROJECT_ROOT)}")
     print(f"Reports saved in {REPORTS_DIR.relative_to(config.PROJECT_ROOT)}")
 

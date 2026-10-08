@@ -139,6 +139,16 @@ TUNE_TIMEOUT_SECONDS = 30    # safety limit per search; if reached, fewer trials
 TUNE_INNER_FOLDS = 3
 
 # ---------------------------------------------------------------------------
+# Experiment tracking (MLflow, optional, local only)
+# ---------------------------------------------------------------------------
+# Runs are stored in a local SQLite file; logged files (report, model) in mlruns/.
+# Both are git-ignored. MLflow's internet telemetry is switched off in
+# foresight/tracking.py, the only module allowed to import MLflow.
+MLFLOW_DB = PROJECT_ROOT / "mlflow.db"
+MLFLOW_ARTIFACT_DIR = PROJECT_ROOT / "mlruns"
+MLFLOW_EXPERIMENT = "foresight-automl"
+
+# ---------------------------------------------------------------------------
 # Explanations
 # ---------------------------------------------------------------------------
 # SHAP is computed on a random sample of held-out test rows. Exact SHAP for a

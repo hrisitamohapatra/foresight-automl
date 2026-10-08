@@ -140,6 +140,16 @@ def test_results_csv_formula_injection_neutralized(data_dir, tmp_path):
     assert ",'=leak()," in text
 
 
+def test_track_logs_each_run(data_dir, tmp_path, monkeypatch):
+    monkeypatch.setattr(config, "MLFLOW_DB", tmp_path / "mlflow.db")
+    monkeypatch.setattr(config, "MLFLOW_ARTIFACT_DIR", tmp_path / "mlruns")
+    rb.run_all(SPECS[:2], data_dir, tmp_path / "results.csv", save_report=False, track=True)
+    from foresight import tracking
+    runs = tracking.recent_runs()
+    assert len(runs) == 2
+    assert set(runs["tags.mlflow.runName"].str.split(" - ").str[0]) == {"churn.csv", "credit.csv"}
+
+
 def test_datasets_file_is_valid():
     specs = rb.load_specs()
     names = [s["name"] for s in specs]

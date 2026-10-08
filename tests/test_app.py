@@ -116,6 +116,22 @@ def test_full_flow(at):
     assert at.get("download_button")
 
 
+def test_tracking_checkbox_saves_run(at, tmp_path, monkeypatch):
+    monkeypatch.setattr(config, "MLFLOW_DB", tmp_path / "mlflow.db")
+    monkeypatch.setattr(config, "MLFLOW_ARTIFACT_DIR", tmp_path / "mlruns")
+    at.selectbox[0].select("churn").run()
+    at.button[0].click().run()
+    labels = [c.label for c in at.checkbox]
+    assert any(label.startswith("Also tune") for label in labels)
+    track = next(c for c in at.checkbox if c.label.startswith("Save this run"))
+    assert track.value is False                    # off by default
+    track.check().run()
+    next(b for b in at.button if b.label == "Train models").click().run()
+    assert not at.exception
+    from foresight import tracking
+    assert len(tracking.recent_runs()) == 1
+
+
 def test_uploaded_text_is_escaped_in_markdown(at):
     at.selectbox[0].select("churn").run()
     at.button[0].click().run()
