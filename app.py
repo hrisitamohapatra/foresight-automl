@@ -23,6 +23,7 @@ import streamlit as st
 from foresight import config
 from foresight.decision import DecisionAnalysis, DecisionError, analyze_decision
 from foresight.explain import Explanation, explain_model
+from foresight.narrate import Narrative, api_key, summarize
 from foresight.ingest import (
     IngestError,
     detect_problem_type,
@@ -234,9 +235,17 @@ def show_decision(decision: DecisionAnalysis):
 
 
 def show_results(result: TrainResult, explanation: Explanation,
-                 decision: DecisionAnalysis, report_html: str):
+                 decision: DecisionAnalysis, narrative: Narrative, report_html: str):
     st.header("Results")
     st.info(md_escape(headline(result)))
+
+    st.subheader("Summary")
+    st.markdown(md_escape(narrative.text))
+    st.caption("Written by Gemini from aggregated results only, and checked against them."
+               if narrative.source == "gemini"
+               else "Template summary, written directly from the results.")
+    if narrative.note:
+        st.warning(md_escape(narrative.note))
 
     metrics = get_metrics(result.problem_type)
     for col, m in zip(st.columns(len(metrics)), metrics):
@@ -377,6 +386,19 @@ def workflow(df: pd.DataFrame, dataset_name: str, file_key: str):
              f"cross-validation fold, so tuned scores stay honest. Can take several "
              f"minutes on large files.")
 
+    has_key = api_key() is not None
+    use_gemini = st.checkbox(
+        "Write the summary with Gemini (sends aggregated results to Google, never your data)",
+        disabled=not has_key,
+        help=("Only scores, model names and importance shares are sent. Column names and "
+              "values are replaced by placeholders such as [COLUMN_1]. The answer is checked "
+              "against the real results; if it fails, a template summary is used."
+              if has_key else "Add GEMINI_API_KEY to the .env file in the project folder "
+                              "to enable this."))
+    if has_key:
+        st.caption("Note: on Google's free tier, requests may be used to improve Google's "
+                   "products. Only aggregated, placeholder-masked results are sent.")
+
     track = st.checkbox(
         "Save this run to the local MLflow log",
         help="Stores settings, scores, the report and the model in mlflow.db and mlruns/ "
@@ -392,8 +414,12 @@ def workflow(df: pd.DataFrame, dataset_name: str, file_key: str):
             bar.progress(1.0, text="Explaining the model and choosing a cut-off")
             explanation = explain_model(result)
             decision = analyze_decision(result, cost_fp=float(cost_fp), cost_fn=float(cost_fn))
-            report_html = build_report(result, explanation, dataset_name, question, decision)
-            state.outputs = (result, explanation, decision, report_html)
+            if use_gemini:
+                bar.progress(1.0, text="Writing the summary with Gemini")
+            narrative = summarize(result, explanation, decision, use_gemini=use_gemini)
+            report_html = build_report(result, explanation, dataset_name, question,
+                                       decision, narrative)
+            state.outputs = (result, explanation, decision, narrative, report_html)
             if track:
                 # Imported only when needed: tracking.py switches off MLflow's
                 # internet telemetry before MLflow itself is loaded.

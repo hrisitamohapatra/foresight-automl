@@ -82,7 +82,9 @@ def workflow_script():
 
 
 @pytest.fixture
-def at():
+def at(tmp_path, monkeypatch):
+    # Never read the real .env in tests: behave as if no Gemini key exists.
+    monkeypatch.setattr(config, "ENV_FILE", tmp_path / "no.env")
     return AppTest.from_function(workflow_script, default_timeout=180).run()
 
 
@@ -114,6 +116,29 @@ def test_full_flow(at):
     assert any(s.value == "Turning scores into decisions" for s in at.subheader)
     assert any("costing 5" in m.value for m in at.markdown)
     assert at.get("download_button")
+
+
+def test_gemini_checkbox_disabled_without_key_and_summary_shown(at):
+    at.selectbox[0].select("churn").run()
+    at.button[0].click().run()
+    gemini = next(c for c in at.checkbox if c.label.startswith("Write the summary with Gemini"))
+    assert gemini.disabled and gemini.value is False
+    next(b for b in at.button if b.label == "Train models").click().run()
+    assert not at.exception
+    assert any(s.value == "Summary" for s in at.subheader)
+    assert any("Template summary" in c.value for c in at.caption)
+
+
+def test_gemini_checkbox_enabled_with_key(tmp_path, monkeypatch):
+    env = tmp_path / ".env"
+    env.write_text("GEMINI_API_KEY=test-key-for-ui-only\n", encoding="utf-8")
+    monkeypatch.setattr(config, "ENV_FILE", env)
+    at = AppTest.from_function(workflow_script, default_timeout=180).run()
+    at.selectbox[0].select("churn").run()
+    at.button[0].click().run()
+    gemini = next(c for c in at.checkbox if c.label.startswith("Write the summary with Gemini"))
+    assert not gemini.disabled
+    assert any("free tier" in c.value for c in at.caption)
 
 
 def test_tracking_checkbox_saves_run(at, tmp_path, monkeypatch):

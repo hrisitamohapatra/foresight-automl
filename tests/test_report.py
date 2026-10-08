@@ -206,6 +206,32 @@ def test_positive_class_html_escaped_in_decision_section():
 
 
 # ---------------------------------------------------------------------------
+# Summary section
+# ---------------------------------------------------------------------------
+def test_summary_section_escapes_uploaded_names(binary_run):
+    from foresight.narrate import Narrative
+
+    result, exp = binary_run
+    narrative = Narrative(f"The model relies on {XSS_COLUMN} the most.", "gemini",
+                          note="")
+    page = build_report(result, exp, narrative=narrative)
+    assert "<h2>Summary</h2>" in page
+    assert XSS_COLUMN not in page
+    assert str(escape(XSS_COLUMN)) in page
+    assert "checked against them" in page
+
+
+def test_summary_note_shown_when_template_used(binary_run):
+    from foresight.narrate import summarize
+
+    result, exp = binary_run
+    narrative = summarize(result, exp)
+    narrative.note = "Gemini was not used: no GEMINI_API_KEY in the .env file."
+    page = build_report(result, exp, narrative=narrative)
+    assert "Template summary" in page and "no GEMINI_API_KEY" in page
+
+
+# ---------------------------------------------------------------------------
 # Formatting and saving
 # ---------------------------------------------------------------------------
 def test_fmt():

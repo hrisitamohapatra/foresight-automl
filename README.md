@@ -102,6 +102,20 @@ MLflow sends usage telemetry over the internet by default; `foresight/tracking.p
 it off before MLflow is loaded, and is the only module allowed to import MLflow. A test
 checks this in a real (non-test) environment with all network connections blocked.
 
+**Plain-English summary (template, or optionally Gemini).** Every report starts with a short
+summary written directly from the results. In the app you can instead ask Gemini to write it:
+
+1. Copy `.env.example` to `.env` and put your key after `GEMINI_API_KEY=` (never commit `.env`).
+2. Tick "Write the summary with Gemini" before training. It is off by default.
+
+Only aggregated results are sent (scores, model names, importance shares, decision numbers),
+never data rows. Column names, class labels and the target name are replaced by placeholders
+such as `[COLUMN_1]`, so uploaded text never reaches Gemini and cannot inject instructions.
+Gemini's answer is checked before use: every number must match a real result, only known
+placeholders may appear, and causal claims, links and HTML are rejected. If any check fails
+or the call fails, the template summary is shown and the report says why. The model name is
+set in `foresight/config.py` (`GEMINI_MODEL`). Benchmarks never call Gemini.
+
 **Leakage handling.** The automatic check excluded `Churn Value` and `Churn Reason`
 (Telco). Three known leaks are dropped in `datasets.json`, each with a documented reason:
 `Churn Score` (another model's prediction; flagged by the warning tier at single-column

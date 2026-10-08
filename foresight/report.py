@@ -307,9 +307,18 @@ def caveats(result: TrainResult, explanation: Explanation) -> list[str]:
 # ---------------------------------------------------------------------------
 # Report assembly
 # ---------------------------------------------------------------------------
+def summary_context(narrative) -> dict | None:
+    if narrative is None:
+        return None
+    source = ("Written by Gemini from aggregated results only, and checked against them."
+              if narrative.source == "gemini" else
+              "Template summary, written directly from the results.")
+    return {"text": narrative.text, "source": source, "note": narrative.note}
+
+
 def build_context(result: TrainResult, explanation: Explanation,
                   dataset_name: str = "", decision_question: str = "",
-                  decision: DecisionAnalysis | None = None) -> dict:
+                  decision: DecisionAnalysis | None = None, narrative=None) -> dict:
     """Everything the template needs, already formatted as text."""
     metrics = get_metrics(result.problem_type)
 
@@ -394,6 +403,7 @@ def build_context(result: TrainResult, explanation: Explanation,
         "model_chart": model_chart(result),
         "decision": decision_context(decision),
         "tuning": tuning_context(result),
+        "summary": summary_context(narrative),
     }
 
 
@@ -415,9 +425,10 @@ def tuning_context(result: TrainResult) -> dict | None:
 
 def build_report(result: TrainResult, explanation: Explanation,
                  dataset_name: str = "", decision_question: str = "",
-                 decision: DecisionAnalysis | None = None) -> str:
+                 decision: DecisionAnalysis | None = None, narrative=None) -> str:
     """Return the full report as an HTML string."""
-    context = build_context(result, explanation, dataset_name, decision_question, decision)
+    context = build_context(result, explanation, dataset_name, decision_question,
+                            decision, narrative)
     return _env.get_template("report.html.j2").render(**context)
 
 

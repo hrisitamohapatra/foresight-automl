@@ -23,6 +23,7 @@ import pandas as pd
 from foresight import config
 from foresight.decision import DecisionError, analyze_decision
 from foresight.explain import explain_model
+from foresight.narrate import summarize
 from foresight.ingest import (
     IngestError,
     detect_problem_type,
@@ -120,8 +121,10 @@ def run_one(spec: dict, data_dir: Path = DATA_DIR, save_report: bool = True,
 
     html = ""
     if save_report or track:
+        # Template summary only: benchmarks never call Gemini (fully offline).
+        narrative = summarize(result, explanation, decision, use_gemini=False)
         html = build_report(result, explanation, dataset_name=f"{spec['name']}.csv",
-                            decision=decision)
+                            decision=decision, narrative=narrative)
     if save_report:
         REPORTS_DIR.mkdir(parents=True, exist_ok=True)
         suffix = "_tuned" if tune else ""

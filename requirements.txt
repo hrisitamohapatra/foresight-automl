@@ -17,3 +17,5 @@ joblib==1.6.0
 optuna==5.0.0
 # Telemetry is switched off in foresight/tracking.py (the only module that imports it).
 mlflow-skinny==3.17.0
+# Only contacts the Gemini API, and only when the user switches narration on.
+google-genai==2.29.0

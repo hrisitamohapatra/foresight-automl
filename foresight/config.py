@@ -149,6 +149,19 @@ MLFLOW_ARTIFACT_DIR = PROJECT_ROOT / "mlruns"
 MLFLOW_EXPERIMENT = "foresight-automl"
 
 # ---------------------------------------------------------------------------
+# Narrative summary (template always; Gemini optional, off by default)
+# ---------------------------------------------------------------------------
+# Gemini receives ONLY aggregated results, with every piece of uploaded text
+# (column names, class labels, target name) replaced by placeholders such as
+# [COLUMN_1]. Its answer is checked against the real results before use;
+# otherwise the template summary is shown instead.
+ENV_FILE = PROJECT_ROOT / ".env"          # holds GEMINI_API_KEY (never committed)
+GEMINI_MODEL = "gemini-2.5-flash"         # change if your key uses a different model
+GEMINI_TIMEOUT_SECONDS = 30
+NARRATIVE_MAX_CHARS = 1500
+NARRATIVE_TOP_DRIVERS = 5
+
+# ---------------------------------------------------------------------------
 # Explanations
 # ---------------------------------------------------------------------------
 # SHAP is computed on a random sample of held-out test rows. Exact SHAP for a

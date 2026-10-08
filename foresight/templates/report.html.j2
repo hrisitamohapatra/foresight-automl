@@ -59,6 +59,15 @@
   </p>
 </section>
 
+{% if summary %}
+<section>
+  <h2>Summary</h2>
+  <p>{{ summary.text }}</p>
+  <p class="small">{{ summary.source }}</p>
+  {% if summary.note %}<p class="warn">{{ summary.note }}</p>{% endif %}
+</section>
+{% endif %}
+
 <section>
   <h2>How well the model does</h2>
   <p class="headline">{{ headline }}</p>
