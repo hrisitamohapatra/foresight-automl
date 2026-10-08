@@ -21,5 +21,8 @@ benchmarks/data/
 mlflow.db
 mlruns/
 
+# Personal study documents in the project root (kept local, not on GitHub)
+/*.docx
+
 # Local Claude Code tool settings
 .claude/
