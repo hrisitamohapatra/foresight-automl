@@ -163,6 +163,49 @@ def test_dollar_sign_column_does_not_break_charts():
 
 
 # ---------------------------------------------------------------------------
+# Decision section
+# ---------------------------------------------------------------------------
+def test_decision_section(binary_run):
+    from foresight.decision import analyze_decision
+
+    result, exp = binary_run
+    decision = analyze_decision(result, cost_fp=1, cost_fn=5)
+    page = build_report(result, exp, decision=decision)
+    assert "<h2>Turning scores into decisions</h2>" in page
+    assert f"{decision.threshold:.2f}" in page
+    assert page.count('src="data:image/png;base64,') == 4   # + reliability + gains
+    chosen = decision.test_chosen
+    assert f"{chosen.tp} of {chosen.tp + chosen.fn}" in page
+    assert "costing 5" in page and "costing 1" in page
+
+
+def test_decision_section_absent_without_analysis(binary_html):
+    assert "Turning scores into decisions" not in binary_html
+
+
+def test_decision_not_applicable_shows_reason():
+    from foresight.decision import analyze_decision
+
+    rng = np.random.default_rng(config.RANDOM_SEED)
+    df = pd.DataFrame({"size": rng.normal(100, 20, size=N)})
+    df["price"] = 3 * df["size"] + rng.normal(scale=10, size=N)
+    result = run_training(df, "price", "regression")
+    page = build_report(result, explain_model(result), decision=analyze_decision(result))
+    assert "apply to yes/no predictions only" in page
+
+
+def test_positive_class_html_escaped_in_decision_section():
+    from foresight.decision import analyze_decision
+
+    df = churn_df()
+    df["churn"] = df["churn"].map({"yes": "<i>left</i>", "no": "stayed"})
+    result = run_training(df, "churn", "binary", positive_class="<i>left</i>")
+    page = build_report(result, explain_model(result), decision=analyze_decision(result))
+    assert "<i>left</i>" not in page
+    assert str(escape("<i>left</i>")) in page
+
+
+# ---------------------------------------------------------------------------
 # Formatting and saving
 # ---------------------------------------------------------------------------
 def test_fmt():

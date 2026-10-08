@@ -50,7 +50,21 @@ This writes `benchmarks/results.csv` and one HTML report per dataset to
 | Bank marketing (UCI) | 45,211 | binary, imbalanced (11.7%) | PR-AUC | 0.117 | 0.398 | LightGBM 0.443 ± 0.011 | 0.464 |
 | Bike sharing, hourly (UCI) | 17,379 | regression | RMSE (lower is better) | 182.2 | 142.6 | LightGBM 41.2 ± 1.6 | 39.0 |
 
-Each dataset runs end to end in 6-15 seconds on a laptop.
+Each dataset runs end to end in 7-30 seconds on a laptop (including the decision analysis below).
+
+**From scores to decisions (binary datasets).** Calibration and the cut-off are chosen on
+out-of-fold predictions for the training data, then checked once on the test set:
+
+| Dataset | Costs (false alarm : miss) | Calibrated? (test Brier) | Cut-off | Test cost per 1,000 rows: cut-off 0.50 → chosen | Positives caught | Lift in top 10% |
+|---|---|---|---|---|---|---|
+| Telco churn | 1 : 1 | No (0.137) | 0.53 | 198.7 → 199.4 | 54% | 2.8× |
+| German credit | 1 : 5 (documented) | Yes, 0.165 → 0.158 | 0.16 | 830 → 530 | 92% | 2.5× |
+| Bank marketing | 1 : 1 | Yes, 0.147 → 0.080 | 0.53 | 104.3 → 103.8 | 19% | 4.5× |
+
+With the German credit cost matrix, the chosen cut-off (0.16) matches the theoretical
+optimum for calibrated probabilities, 1 / (1 + 5) ≈ 0.17, and cuts the test-set cost by 36%.
+With equal costs the chosen cut-off stays near 0.50, as expected; on Telco it was marginally
+worse than 0.50 on the test set, which the report states rather than hides.
 
 **Leakage handling.** The automatic check excluded `Churn Value` and `Churn Reason`
 (Telco). Three known leaks are dropped in `datasets.json`, each with a documented reason:

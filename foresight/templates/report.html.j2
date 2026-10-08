@@ -35,6 +35,8 @@
           padding: 8px 12px; margin: 8px 0; }
   .note { background: var(--bg2); padding: 8px 12px; margin: 8px 0; }
   img { max-width: 100%; height: auto; }
+  .charts img { max-width: 520px; width: 100%; }
+  h3 { color: var(--dark); font-size: 1.05rem; margin-top: 20px; }
   ul { padding-left: 20px; }
   .small { font-size: 0.85rem; opacity: 0.8; }
 </style>
@@ -103,6 +105,50 @@
   </div>
 </section>
 
+{% if decision %}
+<section>
+  <h2>Turning scores into decisions</h2>
+  {% if not decision.applicable %}
+  <p class="note">{{ decision.reason }}</p>
+  {% else %}
+  <h3>Can the probabilities be trusted?</h3>
+  <p>{{ decision.calibration }}</p>
+  <div class="charts">
+    <img alt="Reliability chart" src="data:image/png;base64,{{ decision.reliability_chart }}">
+  </div>
+  <p class="small">Points close to the dashed line mean that, for example, rows given a 30%
+  probability really were positive about 30% of the time.</p>
+
+  <h3>Where to draw the line</h3>
+  <p>{{ decision.costs }} {{ decision.threshold }}</p>
+  <p>{{ decision.comparison }}</p>
+  <div class="table-wrap">
+  <table>
+    <tr><th>Strategy (test set)</th><th>Rows flagged</th><th>'{{ decision.positive_class }}' cases caught</th>
+        <th>False alarms</th><th>Missed</th><th>Cost per 1,000 rows</th></tr>
+    {% for row in decision.rows %}
+    <tr{% if loop.first %} class="best"{% endif %}>
+      <td>{{ row.name }}</td><td>{{ row.flagged }}</td><td>{{ row.caught }}</td>
+      <td>{{ row.false_alarms }}</td><td>{{ row.missed }}</td><td>{{ row.cost }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+  </div>
+  <p class="small">The cut-off was chosen using out-of-fold predictions on the training data;
+  this table is its one check on the held-out test set. The costs are assumptions: change
+  them to match the real business situation.</p>
+
+  <h3>Who to act on first</h3>
+  <div class="charts">
+    <img alt="Cumulative gains chart" src="data:image/png;base64,{{ decision.gains_chart }}">
+  </div>
+  <ul>
+    {% for line in decision.gains_lines %}<li>{{ line }}</li>{% endfor %}
+  </ul>
+  {% endif %}
+</section>
+{% endif %}
+
 <section>
   <h2>What the model relies on</h2>
   <p>These are the columns the model leans on most when making predictions.
@@ -165,6 +211,10 @@
     <li>All preprocessing (filling missing values, scaling, encoding) was learned inside
         each cross-validation training fold only.</li>
     <li>{{ cv_folds }}-fold cross-validation for model comparison; the test set was used once.</li>
+    {% if decision and decision.applicable %}
+    <li>Calibration and the cut-off were chosen on out-of-fold predictions for the training
+        data (calibration nested inside each fold), then checked once on the test set.</li>
+    {% endif %}
     <li>SHAP values on {{ shap_rows }} test rows; permutation importance on {{ perm_rows }} test rows,
         {{ perm_repeats }} repeats, measured as the drop in {{ perm_metric }}.</li>
     <li>Total run time {{ runtime }} seconds. {{ versions }}.</li>

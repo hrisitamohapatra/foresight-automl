@@ -41,7 +41,8 @@ SPECS = [
     {"name": "churn", "file": "churn.csv", "target": "churn", "positive_class": "Yes"},
     {"name": "credit", "file": "sub/credit.data", "sep": "whitespace", "header": False,
      "columns": ["account", "months", "risk"], "target": "risk",
-     "target_labels": {"1": "good", "2": "bad"}, "positive_class": "bad"},
+     "target_labels": {"1": "good", "2": "bad"}, "positive_class": "bad",
+     "costs": {"false_alarm": 1, "missed": 5}},
     {"name": "bank", "file": "bank.csv", "sep": ";", "target": "y",
      "positive_class": "yes", "drop_columns": ["duration"]},
 ]
@@ -98,6 +99,16 @@ def test_results_match_a_direct_run(data_dir, tmp_path):
     assert row["best_score"] == pytest.approx(direct.best.cv_mean[direct.selection_metric])
     assert row["test_score"] == pytest.approx(direct.test_scores[direct.selection_metric])
     assert row["baseline_score"] == pytest.approx(0.5)
+
+
+def test_costs_used_for_threshold(data_dir, tmp_path):
+    results = rb.run_all(SPECS[:2], data_dir, tmp_path / "results.csv", save_report=False)
+    churn, credit = results.iloc[0], results.iloc[1]
+    assert churn["costs_fp_fn"] == "1.0:1.0"
+    assert credit["costs_fp_fn"] == "1:5"
+    # Expensive misses -> a lower cut-off than the 1:1 default would suggest.
+    assert credit["threshold"] < 0.5
+    assert credit["test_cost_per_1000_chosen"] > 0
 
 
 def test_results_csv_columns(data_dir, tmp_path):

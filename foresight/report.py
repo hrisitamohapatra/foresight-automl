@@ -26,6 +26,7 @@ import matplotlib.pyplot as plt  # noqa: E402
 from jinja2 import Environment, FileSystemLoader  # noqa: E402
 
 from foresight import config  # noqa: E402
+from foresight.decision import DecisionAnalysis  # noqa: E402
 from foresight.explain import Explanation  # noqa: E402
 from foresight.ingest import neutralize_cell, safe_display_name  # noqa: E402
 from foresight.models import get_metrics  # noqa: E402
@@ -121,6 +122,116 @@ def model_chart(result: TrainResult) -> str:
     return _figure_to_base64(fig)
 
 
+def reliability_chart(decision: DecisionAnalysis) -> str:
+    fig, ax = plt.subplots(figsize=(5.5, 4.5))
+    ax.plot([0, 1], [0, 1], linestyle="--", color=config.CHART_BLUES[4], label="Perfectly reliable")
+    styles = {"Original": (config.CHART_BLUES[2], "o"), "Calibrated": (config.CHART_BLUES[0], "s")}
+    for name, (predicted, actual) in decision.reliability.items():
+        color, marker = styles[name]
+        ax.plot(predicted, actual, marker=marker, color=color, label=name)
+    ax.set_xlabel("Predicted probability (test rows, grouped)")
+    ax.set_ylabel("Actual share that were positive")
+    ax.legend(frameon=False)
+    _style_axes(ax)
+    return _figure_to_base64(fig)
+
+
+def gains_chart(decision: DecisionAnalysis) -> str:
+    gains = decision.gains
+    fig, ax = plt.subplots(figsize=(5.5, 4.5))
+    ax.plot([0, 100], [0, 100], linestyle="--", color=config.CHART_BLUES[4], label="Random order")
+    ax.plot(gains["pct_acted_on"], gains["pct_positives_reached"],
+            color=config.CHART_BLUES[0], label="Model order (highest risk first)")
+    ax.set_xlabel("% of rows acted on")
+    ax.set_ylabel(f"% of all '{_chart_label(decision.positive_class)}' cases reached")
+    ax.legend(frameon=False)
+    _style_axes(ax)
+    return _figure_to_base64(fig)
+
+
+# ---------------------------------------------------------------------------
+# Decision section text
+# ---------------------------------------------------------------------------
+def num(value: float) -> str:
+    """Compact number for costs: 1, 5, 2.5, 1,000."""
+    return f"{value:,.2f}".rstrip("0").rstrip(".")
+
+
+def decision_context(decision: DecisionAnalysis | None, charts: bool = True) -> dict | None:
+    """Plain-English text (and optionally chart images) for the decision section."""
+    if decision is None:
+        return None
+    if not decision.applicable:
+        return {"applicable": False, "reason": decision.reason}
+
+    pos = decision.positive_class
+    fp, fn = decision.cost_fp, decision.cost_fn
+    method = "Platt/sigmoid" if decision.calibration_method == "sigmoid" else "isotonic"
+    if decision.calibrated:
+        calibration = (
+            f"The probabilities were calibrated ({method} method) because, on the training "
+            f"data, this made them more accurate: Brier score {fmt(decision.oof_brier_raw)} → "
+            f"{fmt(decision.oof_brier_calibrated)} (lower is better). On the test set: "
+            f"{fmt(decision.test_brier_raw)} → {fmt(decision.test_brier_calibrated)}."
+        )
+    else:
+        calibration = (
+            f"Calibration ({method} method) was tested but did not make the probabilities "
+            f"more accurate on the training data (Brier score {fmt(decision.oof_brier_raw)} "
+            f"vs {fmt(decision.oof_brier_calibrated)}), so the original probabilities are used."
+        )
+
+    def row(name, outcome):
+        positives = outcome.tp + outcome.fn
+        return {
+            "name": name,
+            "flagged": f"{outcome.flagged_share:.0%}",
+            "caught": f"{outcome.tp} of {positives} ({outcome.recall:.0%})",
+            "false_alarms": f"{outcome.fp}",
+            "missed": f"{outcome.fn}",
+            "cost": num(outcome.cost_per_1000(fp, fn)),
+        }
+
+    chosen, default = decision.test_chosen, decision.test_default
+    chosen_cost, default_cost = chosen.cost_per_1000(fp, fn), default.cost_per_1000(fp, fn)
+    if decision.threshold == 0.5:
+        comparison = "The chosen cut-off is the same as the usual default of 0.50."
+    elif chosen_cost < default_cost:
+        comparison = (f"On the test set, this cut-off cost {num(chosen_cost)} per 1,000 rows, "
+                      f"compared with {num(default_cost)} at the default cut-off of 0.50.")
+    else:
+        comparison = (f"On the test set, this cut-off cost {num(chosen_cost)} per 1,000 rows, "
+                      f"compared with {num(default_cost)} at the default of 0.50, so the "
+                      "improvement seen on the training data did not carry over here.")
+
+    gains = decision.gains.set_index("pct_acted_on")
+    gains_lines = [
+        f"Acting on the top {pct}% highest-scoring rows reaches "
+        f"{gains.loc[pct, 'pct_positives_reached']:.0f}% of all '{pos}' cases "
+        f"({gains.loc[pct, 'lift']:.1f}× better than picking rows at random)."
+        for pct in (10, 20, 30, 50)
+    ]
+
+    return {
+        "applicable": True,
+        "positive_class": pos,
+        "calibration": calibration,
+        "costs": (f"A missed '{pos}' case was counted as costing {num(fn)} and a false alarm "
+                  f"(flagging a row that is not '{pos}') as costing {num(fp)}."),
+        "threshold": (f"The cut-off with the lowest total cost on the training data is "
+                      f"{decision.threshold:.2f}: rows scoring {decision.threshold:.2f} or higher "
+                      f"are flagged as likely '{pos}'."),
+        "comparison": comparison,
+        "rows": [row(f"Chosen cut-off ({decision.threshold:.2f})", chosen),
+                 row("Default cut-off (0.50)", default),
+                 row("Flag nobody", decision.test_flag_none),
+                 row("Flag everyone", decision.test_flag_all)],
+        "gains_lines": gains_lines,
+        "reliability_chart": reliability_chart(decision) if charts else "",
+        "gains_chart": gains_chart(decision) if charts else "",
+    }
+
+
 # ---------------------------------------------------------------------------
 # Plain-English text
 # ---------------------------------------------------------------------------
@@ -194,7 +305,8 @@ def caveats(result: TrainResult, explanation: Explanation) -> list[str]:
 # Report assembly
 # ---------------------------------------------------------------------------
 def build_context(result: TrainResult, explanation: Explanation,
-                  dataset_name: str = "", decision_question: str = "") -> dict:
+                  dataset_name: str = "", decision_question: str = "",
+                  decision: DecisionAnalysis | None = None) -> dict:
     """Everything the template needs, already formatted as text."""
     metrics = get_metrics(result.problem_type)
 
@@ -277,13 +389,15 @@ def build_context(result: TrainResult, explanation: Explanation,
                     f"SHAP {shap.__version__}",
         "importance_chart": importance_chart(explanation),
         "model_chart": model_chart(result),
+        "decision": decision_context(decision),
     }
 
 
 def build_report(result: TrainResult, explanation: Explanation,
-                 dataset_name: str = "", decision_question: str = "") -> str:
+                 dataset_name: str = "", decision_question: str = "",
+                 decision: DecisionAnalysis | None = None) -> str:
     """Return the full report as an HTML string."""
-    context = build_context(result, explanation, dataset_name, decision_question)
+    context = build_context(result, explanation, dataset_name, decision_question, decision)
     return _env.get_template("report.html.j2").render(**context)
 
 

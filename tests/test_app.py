@@ -104,10 +104,15 @@ def test_full_flow(at):
     assert any("refund_issued" in str(df.value) for df in at.dataframe)
     assert at.checkbox[0].label.startswith("Keep refund")   # leakage override offered
 
+    assert len(at.number_input) == 2      # cost of a miss / of a false alarm
+    at.number_input[0].set_value(5.0)     # misses cost 5x a false alarm
     at.button[1].click().run()            # Train models
     assert not at.exception
     assert at.header[0].value == "Results"
-    assert len(at.metric) == 4            # ROC-AUC, PR-AUC, F1, accuracy
+    # 4 test metrics + 3 decision cards (cut-off, caught, cost)
+    assert len(at.metric) == 7
+    assert any(s.value == "Turning scores into decisions" for s in at.subheader)
+    assert any("costing 5" in m.value for m in at.markdown)
     assert at.get("download_button")
 
 

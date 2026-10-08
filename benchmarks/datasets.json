@@ -21,7 +21,8 @@
     "target": "credit_risk",
     "target_labels": {"1": "good", "2": "bad"},
     "positive_class": "bad",
-    "notes": "Credit risk, binary. Space-separated file without a header; column names from german.doc."
+    "costs": {"false_alarm": 1, "missed": 5},
+    "notes": "Credit risk, binary. Space-separated file without a header; column names from german.doc. Costs from the dataset's documented cost matrix: classing a bad customer as good costs 5, classing a good customer as bad costs 1."
   },
   {
     "name": "bank_marketing",

@@ -21,6 +21,7 @@ from pathlib import Path
 import pandas as pd
 
 from foresight import config
+from foresight.decision import DecisionError, analyze_decision
 from foresight.explain import explain_model
 from foresight.ingest import (
     IngestError,
@@ -110,9 +111,15 @@ def run_one(spec: dict, data_dir: Path = DATA_DIR, save_report: bool = True) -> 
     train_seconds = time.perf_counter() - started
     explanation = explain_model(result)
 
+    # Costs default to 1:1 unless the dataset documents its own.
+    costs = spec.get("costs", {})
+    cost_fp, cost_fn = costs.get("false_alarm", 1.0), costs.get("missed", 1.0)
+    decision = analyze_decision(result, cost_fp=cost_fp, cost_fn=cost_fn)
+
     if save_report:
         REPORTS_DIR.mkdir(parents=True, exist_ok=True)
-        html = build_report(result, explanation, dataset_name=f"{spec['name']}.csv")
+        html = build_report(result, explanation, dataset_name=f"{spec['name']}.csv",
+                            decision=decision)
         (REPORTS_DIR / f"{spec['name']}.html").write_text(html, encoding="utf-8")
 
     key = result.selection_metric
@@ -138,6 +145,19 @@ def run_one(spec: dict, data_dir: Path = DATA_DIR, save_report: bool = True) -> 
         "columns_warned": "; ".join(c.name for c in result.profile.columns
                                     if "strong_single_predictor" in c.flags),
         "top_drivers": "; ".join(explanation.top_drivers[:3]),
+        # Decision layer (binary only; blank otherwise).
+        "costs_fp_fn": f"{cost_fp}:{cost_fn}" if decision.applicable else "",
+        "calibrated": decision.calibrated if decision.applicable else "",
+        "test_brier_raw": decision.test_brier_raw if decision.applicable else "",
+        "test_brier_calibrated": decision.test_brier_calibrated if decision.applicable else "",
+        "threshold": decision.threshold if decision.applicable else "",
+        "test_cost_per_1000_chosen": (decision.test_chosen.cost_per_1000(cost_fp, cost_fn)
+                                      if decision.applicable else ""),
+        "test_cost_per_1000_default": (decision.test_default.cost_per_1000(cost_fp, cost_fn)
+                                       if decision.applicable else ""),
+        "test_recall_chosen": decision.test_chosen.recall if decision.applicable else "",
+        "test_lift_top10": (decision.gains.loc[decision.gains.pct_acted_on == 10, "lift"].item()
+                            if decision.applicable else ""),
         "train_seconds": round(train_seconds, 1),
         "total_seconds": round(time.perf_counter() - started, 1),
         "error": "",
@@ -161,7 +181,7 @@ def run_all(specs: list[dict], data_dir: Path = DATA_DIR, results_file: Path = R
             print(f"  done in {row['total_seconds']}s: best {row['best_model']}, "
                   f"{row['metric']} CV {row['best_score']:.3f} ± {row['best_std']:.3f}, "
                   f"test {row['test_score']:.3f}", flush=True)
-        except (BenchmarkError, IngestError, TrainError) as err:
+        except (BenchmarkError, IngestError, TrainError, DecisionError) as err:
             # Record the failure honestly instead of skipping it silently.
             print(f"  FAILED: {err}", flush=True)
             row = {"dataset": spec["name"], "error": str(err)}

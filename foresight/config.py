@@ -154,6 +154,23 @@ DIRECTION_MIN_CORRELATION = 0.3
 DIRECTION_MIN_SHARE = 0.02
 
 # ---------------------------------------------------------------------------
+# Decisions: calibration, thresholds, lift (binary problems only)
+# ---------------------------------------------------------------------------
+# Isotonic calibration is more flexible but needs plenty of data; below this
+# many training rows, sigmoid (Platt) calibration is used instead.
+CALIBRATION_ISOTONIC_MIN_ROWS = 5_000
+# Folds used INSIDE calibration (nested within each outer CV fold).
+CALIBRATION_CV_FOLDS = 3
+# Number of bins in the reliability (calibration) chart.
+CALIBRATION_BINS = 10
+
+# Candidate cut-offs searched when choosing a cost-based threshold.
+THRESHOLD_GRID = [round(0.01 * i, 2) for i in range(1, 100)]   # 0.01 ... 0.99
+
+# Cost inputs must be positive and below this (guards against typos).
+MAX_COST = 1_000_000_000
+
+# ---------------------------------------------------------------------------
 # Security
 # ---------------------------------------------------------------------------
 # Spreadsheet apps treat cells starting with these characters as formulas.

@@ -21,6 +21,7 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from foresight import config
+from foresight.decision import DecisionAnalysis, DecisionError, analyze_decision
 from foresight.explain import Explanation, explain_model
 from foresight.ingest import (
     IngestError,
@@ -30,7 +31,7 @@ from foresight.ingest import (
     safe_display_name,
 )
 from foresight.models import get_metrics
-from foresight.report import build_report, caveats, fmt, headline
+from foresight.report import build_report, caveats, decision_context, fmt, headline
 from foresight.train import (
     TrainError,
     TrainResult,
@@ -114,6 +115,36 @@ def model_figure(result: TrainResult):
     return _style(fig, len(ok), f"{metric.name}, cross-validation mean ± std ({direction})")
 
 
+def reliability_figure(decision: DecisionAnalysis):
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(x=[0, 1], y=[0, 1], mode="lines", name="Perfectly reliable",
+                             line=dict(dash="dash", color=config.CHART_BLUES[4])))
+    colors = {"Original": config.CHART_BLUES[2], "Calibrated": config.CHART_BLUES[0]}
+    for name, (predicted, actual) in decision.reliability.items():
+        fig.add_trace(go.Scatter(x=predicted, y=actual, mode="lines+markers", name=name,
+                                 line=dict(color=colors[name])))
+    fig.update_layout(template="plotly_white", height=380, margin=dict(l=10, r=10, t=10, b=40),
+                      font=dict(color=config.COLOR_TEXT),
+                      xaxis_title="Predicted probability (test rows, grouped)",
+                      yaxis_title="Actual share positive")
+    return fig
+
+
+def gains_figure(decision: DecisionAnalysis):
+    gains = decision.gains
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(x=[0, 100], y=[0, 100], mode="lines", name="Random order",
+                             line=dict(dash="dash", color=config.CHART_BLUES[4])))
+    fig.add_trace(go.Scatter(x=gains["pct_acted_on"], y=gains["pct_positives_reached"],
+                             mode="lines", name="Model order",
+                             line=dict(color=config.CHART_BLUES[0])))
+    fig.update_layout(template="plotly_white", height=380, margin=dict(l=10, r=10, t=10, b=40),
+                      font=dict(color=config.COLOR_TEXT),
+                      xaxis_title="% of rows acted on (highest risk first)",
+                      yaxis_title=f"% of '{chart_label(decision.positive_class)}' cases reached")
+    return fig
+
+
 def importance_figure(explanation: Explanation, top: int = 10):
     table = explanation.importance.head(top)
     if explanation.shap_available:
@@ -166,7 +197,44 @@ def leakage_choices(profile) -> list[str]:
             if st.checkbox(f"Keep {md_escape(name)} anyway", key=f"keep::{name}")]
 
 
-def show_results(result: TrainResult, explanation: Explanation, report_html: str):
+def show_decision(decision: DecisionAnalysis):
+    st.subheader("Turning scores into decisions")
+    text = decision_context(decision, charts=False)
+    if not text["applicable"]:
+        st.caption(md_escape(text["reason"]))
+        return
+
+    chosen, default = decision.test_chosen, decision.test_default
+    fp, fn = decision.cost_fp, decision.cost_fn
+    cols = st.columns(3)
+    cols[0].metric("Chosen cut-off", f"{decision.threshold:.2f}",
+                   help="Chosen on training data only, to minimise your costs.")
+    cols[1].metric("Positive cases caught (test)", f"{chosen.recall:.0%}",
+                   help="Share of all positive test rows that the cut-off flags.")
+    cols[2].metric("Cost per 1,000 rows (test)", f"{chosen.cost_per_1000(fp, fn):,.0f}",
+                   delta=f"{chosen.cost_per_1000(fp, fn) - default.cost_per_1000(fp, fn):,.0f} "
+                         "vs cut-off 0.50",
+                   delta_color="inverse")
+    st.markdown(md_escape(f"{text['costs']} {text['threshold']} {text['comparison']}"))
+    st.dataframe(pd.DataFrame([{
+        "Strategy (test set)": r["name"], "Rows flagged": r["flagged"],
+        "Positive cases caught": r["caught"], "False alarms": r["false_alarms"],
+        "Missed": r["missed"], "Cost per 1,000 rows": r["cost"],
+    } for r in text["rows"]]), hide_index=True, width="stretch")
+
+    left, right = st.columns(2)
+    with left:
+        st.markdown("**Can the probabilities be trusted?**")
+        st.plotly_chart(reliability_figure(decision), width="stretch")
+        st.caption(md_escape(text["calibration"]))
+    with right:
+        st.markdown("**Who to act on first**")
+        st.plotly_chart(gains_figure(decision), width="stretch")
+        st.markdown("\n".join(f"- {md_escape(line)}" for line in text["gains_lines"]))
+
+
+def show_results(result: TrainResult, explanation: Explanation,
+                 decision: DecisionAnalysis, report_html: str):
     st.header("Results")
     st.info(md_escape(headline(result)))
 
@@ -189,6 +257,8 @@ def show_results(result: TrainResult, explanation: Explanation, report_html: str
         row["Seconds per fold"] = round(r.fit_seconds, 2)
         rows.append(row)
     st.dataframe(pd.DataFrame(rows), hide_index=True, width="stretch")
+
+    show_decision(decision)
 
     st.subheader("What the model relies on")
     st.caption("These show what the model relies on, not what causes the outcome.")
@@ -288,17 +358,31 @@ def workflow(df: pd.DataFrame, dataset_name: str, file_key: str):
     st.subheader("4. Train and compare models")
     st.caption(f"{config.CV_FOLDS}-fold cross-validation on {1 - config.TEST_SIZE:.0%} of "
                f"the rows; the other {config.TEST_SIZE:.0%} is held out for one final test.")
+
+    cost_fp, cost_fn = 1.0, 1.0
+    if problem_type == "binary":
+        pos = md_escape(positive_class)
+        st.markdown("**What do mistakes cost?** Used to choose the cut-off for flagging rows. "
+                    "Any unit works (money, hours, points); only the ratio matters.")
+        left, right = st.columns(2)
+        cost_fn = left.number_input(f"Cost of missing a '{pos}' case", min_value=0.01,
+                                    max_value=float(config.MAX_COST), value=1.0, step=1.0)
+        cost_fp = right.number_input(f"Cost of a false alarm (flagging a row that is not '{pos}')",
+                                     min_value=0.01, max_value=float(config.MAX_COST),
+                                     value=1.0, step=1.0)
+
     if st.button("Train models", type="primary"):
         bar = st.progress(0.0, text="Starting")
         try:
             result = run_training(clean, target, problem_type, positive_class,
                                   include_columns=include, n_dropped_target=n_dropped,
                                   on_progress=lambda msg, frac: bar.progress(frac, text=msg))
-            bar.progress(1.0, text="Explaining the best model")
+            bar.progress(1.0, text="Explaining the model and choosing a cut-off")
             explanation = explain_model(result)
-            report_html = build_report(result, explanation, dataset_name, question)
-            state.outputs = (result, explanation, report_html)
-        except TrainError as err:
+            decision = analyze_decision(result, cost_fp=float(cost_fp), cost_fn=float(cost_fn))
+            report_html = build_report(result, explanation, dataset_name, question, decision)
+            state.outputs = (result, explanation, decision, report_html)
+        except (TrainError, DecisionError) as err:
             st.error(str(err))
             return
         except Exception:
